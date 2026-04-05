@@ -1,0 +1,1209 @@
+/* ============================================================
+   Dark theme (default)
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  --bg: #1e1e2e;
+  --bg-surface: #252536;
+  --bg-surface2: #2a2a3c;
+  --bg-hover: #313145;
+  --bg-selected: #3b3b55;
+  --text: #cdd6f4;
+  --text-dim: #8888aa;
+  --text-bright: #ffffff;
+  --accent: #89b4fa;
+  --accent2: #a6e3a1;
+  --border: #45455a;
+  --border-light: #555570;
+  --scrollbar: #45455a;
+  --scrollbar-hover: #585870;
+  --code-bg: #1a1a2a;
+  --tool-badge: #f9e2af;
+  --tool-badge-text: #1e1e2e;
+  --user-badge: #89b4fa;
+  --asst-badge: #a6e3a1;
+  --mark-bg: #f9e2af44;
+  --mark-text: #f9e2af;
+}
+
+/* ============================================================
+   Light theme
+   ============================================================ */
+[data-theme="light"] {
+  --bg: #f5f5f5;
+  --bg-surface: #ffffff;
+  --bg-surface2: #eeeef2;
+  --bg-hover: #e4e4ea;
+  --bg-selected: #d8d8e2;
+  --text: #333344;
+  --text-dim: #777788;
+  --text-bright: #111122;
+  --accent: #3366cc;
+  --accent2: #228833;
+  --border: #ccccdd;
+  --border-light: #bbbbcc;
+  --scrollbar: #ccccdd;
+  --scrollbar-hover: #aaaabb;
+  --code-bg: #eaeaf0;
+  --tool-badge: #cc8800;
+  --tool-badge-text: #ffffff;
+  --user-badge: #3366cc;
+  --asst-badge: #228833;
+  --mark-bg: #fff3a8;
+  --mark-text: #333344;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text",
+    system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 15px;
+}
+
+#root {
+  height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.provider-select {
+  padding: 5px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--bg-surface2);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+}
+
+.provider-select:focus {
+  border-color: var(--accent);
+}
+
+.provider-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header .stats {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* ============================================================
+   Shared toolbar buttons
+   ============================================================ */
+.toolbar-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  background: var(--bg-surface2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+/* ============================================================
+   Update button
+   ============================================================ */
+.update-btn {
+  padding: 6px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  background: var(--bg-surface2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.update-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+
+.update-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.update-btn.updating {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.update-btn.success {
+  color: var(--accent2);
+  border-color: var(--accent2);
+}
+
+.update-btn.error {
+  color: #f38ba8;
+  border-color: #f38ba8;
+}
+
+/* ============================================================
+   Search bar
+   ============================================================ */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 8px 14px;
+  background: var(--bg-surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+}
+
+.search-bar input:focus {
+  border-color: var(--accent);
+}
+
+.search-bar input::placeholder {
+  color: var(--text-dim);
+}
+
+.filter-toggle {
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Date filter bar
+   ============================================================ */
+.date-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.date-filter-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-filter-bar input[type="date"] {
+  padding: 5px 8px;
+  background: var(--bg-surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.date-filter-bar input[type="date"]:focus {
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   Main area
+   ============================================================ */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Panes
+   ============================================================ */
+.pane {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pane-header {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pane-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ============================================================
+   Resize handles
+   ============================================================ */
+.resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
+}
+
+/* ============================================================
+   Pane 1: Projects
+   ============================================================ */
+.pane-projects {
+  min-width: 140px;
+}
+
+.project-item {
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.project-item:hover {
+  background: var(--bg-hover);
+}
+
+.project-item.selected {
+  background: var(--bg-selected);
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+
+.project-item .name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.project-item .meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-toggle {
+  cursor: pointer;
+  margin-left: 4px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.project-stats {
+  padding: 8px 14px 10px;
+  background: var(--bg-surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.project-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+
+.project-stat span:last-child {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Project size bar (behind project name) */
+.project-size-bar-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.project-size-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.06;
+  border-radius: 0 4px 4px 0;
+}
+
+.project-item {
+  position: relative;
+}
+
+/* ============================================================
+   Pane 2: Requests
+   ============================================================ */
+.pane-requests {
+  min-width: 200px;
+}
+
+.request-item {
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.request-item:hover {
+  background: var(--bg-hover);
+}
+
+.request-item.selected {
+  background: var(--bg-selected);
+  border-left: 3px solid var(--accent2);
+  padding-left: 11px;
+}
+
+.request-item .req-index {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+
+.request-item .req-preview {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.request-item .req-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 5px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-tools {
+  background: var(--tool-badge);
+  color: var(--tool-badge-text);
+}
+
+.badge-hidden {
+  background: #f38ba844;
+  color: #f38ba8;
+  margin-left: 6px;
+}
+
+/* ============================================================
+   Hide / Restore buttons and hidden item styling
+   ============================================================ */
+.req-hide-btn,
+.project-hide-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.request-item:hover .req-hide-btn,
+.project-item:hover .project-hide-btn {
+  opacity: 1;
+}
+
+.req-hide-btn:hover,
+.project-hide-btn:hover {
+  color: #f38ba8;
+}
+
+.req-restore-btn,
+.project-restore-btn,
+.conv-restore-btn {
+  background: none;
+  border: 1px solid var(--accent2);
+  color: var(--accent2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.req-restore-btn:hover,
+.project-restore-btn:hover,
+.conv-restore-btn:hover {
+  background: var(--accent2);
+  color: var(--bg);
+}
+
+.conv-action-btn {
+  flex-shrink: 0;
+}
+
+.conv-hide-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.conv-header:hover .conv-hide-btn {
+  opacity: 1;
+}
+
+.conv-hide-btn:hover {
+  color: #f38ba8;
+}
+
+.request-hidden {
+  opacity: 0.45;
+}
+.request-hidden:hover {
+  opacity: 0.7;
+}
+.project-hidden {
+  opacity: 0.45;
+}
+.project-hidden:hover {
+  opacity: 0.7;
+}
+.conv-hidden {
+  opacity: 0.45;
+}
+.conv-hidden:hover {
+  opacity: 0.7;
+}
+
+.toolbar-btn-active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   Conversation group headers
+   ============================================================ */
+.conv-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.conv-header:hover {
+  background: var(--bg-hover);
+}
+
+.conv-toggle {
+  font-size: 12px;
+  color: var(--text-dim);
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.conv-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.conv-count {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.conv-view-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  background: var(--bg-surface2);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.conv-view-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.conv-ts {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.request-item-nested {
+  padding-left: 28px;
+}
+
+/* ============================================================
+   Pane 3: Content viewer
+   ============================================================ */
+.pane-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.content-viewer-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.toolbar-file {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.content-viewer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.content-viewer h1 {
+  font-size: 24px;
+  margin: 20px 0 10px;
+  color: var(--text-bright);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.content-viewer h2 {
+  font-size: 20px;
+  margin: 16px 0 8px;
+  color: var(--text-bright);
+}
+.content-viewer h3 {
+  font-size: 17px;
+  margin: 14px 0 6px;
+  color: var(--text-bright);
+}
+.content-viewer p {
+  margin: 8px 0;
+}
+.content-viewer ul,
+.content-viewer ol {
+  margin: 8px 0 8px 24px;
+}
+.content-viewer li {
+  margin: 3px 0;
+}
+
+.content-viewer pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  overflow-x: auto;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.content-viewer code {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+}
+
+.content-viewer :not(pre) > code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.content-viewer blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 14px;
+  margin: 10px 0;
+  color: var(--text-dim);
+}
+
+.content-viewer strong {
+  color: var(--text-bright);
+}
+
+.content-viewer .tool-call-header {
+  color: var(--tool-badge);
+  font-weight: 600;
+}
+
+.content-viewer hr {
+  border: none;
+  border-top: 1px dashed var(--border);
+  margin: 20px 0;
+}
+
+.content-viewer mark {
+  background: var(--mark-bg);
+  color: var(--mark-text);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+/* ============================================================
+   Content / Summary split
+   ============================================================ */
+.content-summary-divider {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.content-summary-divider span {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+/* ============================================================
+   Summary panel
+   ============================================================ */
+.summary-panel {
+  flex: 0 0 40%;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 16px 24px;
+  font-size: 15px;
+  line-height: 1.7;
+  background: var(--bg);
+}
+
+.summary-content h1 { font-size: 22px; margin: 14px 0 8px; color: var(--text-bright); }
+.summary-content h2 { font-size: 18px; margin: 12px 0 6px; color: var(--text-bright); }
+.summary-content h3 { font-size: 16px; margin: 10px 0 4px; color: var(--text-bright); }
+.summary-content p { margin: 8px 0; }
+.summary-content ul, .summary-content ol { margin: 8px 0 8px 24px; }
+.summary-content li { margin: 3px 0; }
+.summary-content code {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+}
+.summary-content pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.summary-content strong { color: var(--text-bright); }
+
+/* Loading state */
+.summary-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  padding: 24px;
+}
+
+.summary-loading-bar {
+  width: 200px;
+  height: 6px;
+  background: var(--bg-surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.summary-loading-fill {
+  height: 100%;
+  width: 40%;
+  background: var(--accent);
+  border-radius: 3px;
+  animation: summary-loading-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes summary-loading-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.summary-loading-text {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+/* Error state */
+.summary-error {
+  padding: 16px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.summary-error strong {
+  color: #f38ba8;
+  font-size: 15px;
+}
+
+.summary-error p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.summary-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+  opacity: 0.7;
+  margin-top: 12px;
+}
+
+/* Install guide (shown when claude CLI is missing) */
+.summary-install-guide {
+  padding: 20px 24px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.summary-install-guide h3 {
+  font-size: 17px;
+  color: var(--tool-badge);
+  margin-bottom: 10px;
+}
+
+.summary-install-guide h4 {
+  font-size: 15px;
+  color: var(--text-bright);
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.summary-install-guide p {
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+.summary-install-guide ol {
+  margin: 8px 0 8px 24px;
+  font-size: 14px;
+}
+
+.summary-install-guide li {
+  margin: 10px 0;
+}
+
+.summary-install-guide pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 6px 0;
+  font-size: 13px;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  overflow-x: auto;
+}
+
+.summary-install-guide code {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   Pane 4: Metadata (rightmost)
+   ============================================================ */
+.pane-metadata {
+  min-width: 250px;
+  border-right: none;
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.metadata-panel-global {
+  border-top: 2px solid var(--border);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
+.metadata-panel {
+  padding: 14px 16px;
+}
+
+.metadata-panel h4 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.metadata-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meta-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-item:last-child {
+  border-bottom: none;
+}
+
+.meta-item .label {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.meta-item .value {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+  max-width: 55%;
+}
+
+/* ============================================================
+   Empty / loading states
+   ============================================================ */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  font-size: 15px;
+  text-align: center;
+  padding: 24px;
+}
+
+.loading {
+  color: var(--text-dim);
+  padding: 24px;
+  text-align: center;
+  font-size: 15px;
+}
+
+/* ============================================================
+   Charts & Visualizations
+   ============================================================ */
+.chart-section {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.chart-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Tool breakdown horizontal bars */
+.tool-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-bar-label {
+  font-size: 12px;
+  color: var(--text);
+  width: 70px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.tool-bar-track {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-surface2);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.tool-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.tool-bar-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Conversation timeline dots */
+.timeline-track {
+  position: relative;
+  height: 20px;
+  background: var(--bg-surface2);
+  border-radius: 10px;
+  margin-bottom: 4px;
+}
+
+.timeline-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  border: 2px solid var(--bg-surface);
+}
+
+.timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* Cost estimate */
+.cost-grid {
+  display: flex;
+  gap: 16px;
+}
+
+.cost-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.cost-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.cost-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent2);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+/* Request size sparkline */
+.sparkline-container {
+  width: 100%;
+}
+
+.sparkline-container svg {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+.sparkline-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Monthly breakdown table */
+.monthly-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.monthly-row {
+  display: grid;
+  grid-template-columns: 1fr 0.6fr 0.8fr 0.7fr 0.7fr;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 0;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.monthly-row:last-child {
+  border-bottom: none;
+}
+
+.monthly-header-row {
+  font-weight: 700;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Summary toolbar (regenerate button) */
+.summary-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}

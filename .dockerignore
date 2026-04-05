@@ -1,0 +1,11 @@
+.venv
+.git
+.DS_Store
+raw
+markdown
+markdown_codex
+browser_state
+*.pyc
+__pycache__
+browser/frontend/node_modules
+browser/frontend/dist

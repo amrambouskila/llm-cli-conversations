@@ -1,0 +1,32 @@
+services:
+  llm-browser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-conversation-browser
+    ports:
+      - "${PORT:-5050}:5050"
+    volumes:
+      # Claude source projects (read-only) — where raw JSONL lives
+      # Windows: ~ does not expand in Docker. Set CLAUDE_PROJECTS_DIR explicitly:
+      #   set CLAUDE_PROJECTS_DIR=%USERPROFILE%\.claude\projects
+      - ${CLAUDE_PROJECTS_DIR:-~/.claude/projects}:/data/claude-projects:ro
+      # Raw synced JSONL files (read-write for sync step)
+      - ./raw:/data/raw
+      # Generated markdown files (read-write for conversion step)
+      - ./markdown:/data/markdown
+      # Codex sessions (read-only)
+      - ${CODEX_SESSIONS_DIR:-~/.codex/sessions}:/data/codex-sessions:ro
+      # Generated Codex markdown (read-write)
+      - ./markdown_codex:/data/markdown_codex
+      # Browser state (hidden items, persists across restarts)
+      - ./browser_state:/data/state
+    environment:
+      - MARKDOWN_DIR=/data/markdown
+      - RAW_DIR=/data/raw
+      - CLAUDE_PROJECTS_SRC=/data/claude-projects
+      - CODEX_SESSIONS_SRC=/data/codex-sessions
+      - CODEX_MARKDOWN_DIR=/data/markdown_codex
+      - STATE_DIR=/data/state
+      - STATIC_DIR=/app/static
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+browser/frontend/node_modules/
+browser/frontend/dist/
+raw/
+markdown/
+markdown_codex/
+browser_state/
