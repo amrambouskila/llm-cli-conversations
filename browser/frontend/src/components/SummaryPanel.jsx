@@ -2,28 +2,65 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { renderMarkdown } from "../utils";
 import { deleteSummary } from "../api";
 
-const WATCHER_TIMEOUT_MS = 60_000;
+// Idle timeout: how long we wait without any observable progress before
+// declaring the watcher dead. The timer is reset whenever the backend
+// reports a progress advance, so a long hierarchical conversation summary
+// only trips this if the watcher actually stalls.
+const WATCHER_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+const STARTING_PROGRESS = { phase: "starting", done: 0, total: 0, level: 0 };
+
+const progressSignature = (p) =>
+  p ? `${p.phase || ""}:${p.level ?? 0}:${p.done ?? 0}/${p.total ?? 0}` : "";
+
+const formatProgress = (p) => {
+  if (!p) return "Generating summary...";
+  switch (p.phase) {
+    case "starting":
+      return "Starting summary...";
+    case "segments":
+      return p.total
+        ? `Summarizing requests (${p.done}/${p.total})...`
+        : "Summarizing requests...";
+    case "rollup":
+      return p.total
+        ? `Combining summaries (level ${p.level + 1}, ${p.done}/${p.total})...`
+        : "Combining summaries...";
+    default:
+      return "Generating summary...";
+  }
+};
 
 export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleReady }) {
   const [status, setStatus] = useState("none");
   const [summary, setSummary] = useState("");
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState(null);
   const pollRef = useRef(null);
   const timeoutRef = useRef(null);
   const lastKeyRef = useRef(null);
+  const lastProgressSigRef = useRef("");
 
   const cleanup = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   };
 
-  const startPolling = useCallback((cancelled = { value: false }) => {
+  const startPolling = useCallback((cancelled = { value: false }, initialProgress = null) => {
     setStatus("pending");
     setSummary("");
+    if (initialProgress) {
+      setProgress(initialProgress);
+      lastProgressSigRef.current = progressSignature(initialProgress);
+    }
 
-    timeoutRef.current = setTimeout(() => {
-      if (!cancelled.value) setStatus("no-watcher");
-    }, WATCHER_TIMEOUT_MS);
+    const armIdleTimeout = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        if (!cancelled.value) setStatus("no-watcher");
+      }, WATCHER_IDLE_TIMEOUT_MS);
+    };
+    armIdleTimeout();
 
     pollRef.current = setInterval(async () => {
       try {
@@ -34,6 +71,17 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
           setStatus("ready");
           if (poll.title && onTitleReady) onTitleReady(summaryKey, poll.title);
           cleanup();
+          return;
+        }
+        // If the backend reported a progress advance, reset the idle timer
+        // and update the loading UI.
+        if (poll.progress) {
+          const sig = progressSignature(poll.progress);
+          if (sig !== lastProgressSigRef.current) {
+            lastProgressSigRef.current = sig;
+            setProgress(poll.progress);
+            armIdleTimeout();
+          }
         }
       } catch { /* keep polling */ }
     }, 2000);
@@ -51,6 +99,14 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
     if (summaryKey === lastKeyRef.current && status === "ready") return;
     lastKeyRef.current = summaryKey;
 
+    // Synchronously enter the pending state so React never renders a stale
+    // "no-watcher" / "ready" view while we wait for onRequest to resolve.
+    setStatus("pending");
+    setSummary("");
+    setError("");
+    setProgress(STARTING_PROGRESS);
+    lastProgressSigRef.current = progressSignature(STARTING_PROGRESS);
+
     const cancelled = { value: false };
 
     (async () => {
@@ -63,7 +119,7 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
           if (res.title && onTitleReady) onTitleReady(summaryKey, res.title);
           return;
         }
-        startPolling(cancelled);
+        startPolling(cancelled, res.progress || null);
       } catch (err) {
         if (cancelled.value) return;
         setStatus("error");
@@ -77,12 +133,17 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
   const handleRegenerate = async () => {
     if (!summaryKey || !onRequest) return;
     cleanup();
+    // Synchronously enter the pending state with a "starting" sentinel so
+    // React doesn't briefly render "Generating summary..." (null progress)
+    // or a leftover "no-watcher" view while we wait for the backend.
+    setStatus("pending");
+    setSummary("");
+    setError("");
+    setProgress(STARTING_PROGRESS);
+    lastProgressSigRef.current = progressSignature(STARTING_PROGRESS);
     try {
       await deleteSummary(summaryKey);
       lastKeyRef.current = null;
-      setStatus("pending");
-      setSummary("");
-      setError("");
 
       const res = await onRequest();
       if (res.status === "ready") {
@@ -90,7 +151,7 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
         setStatus("ready");
         if (res.title && onTitleReady) onTitleReady(summaryKey, res.title);
       } else {
-        startPolling({ value: false });
+        startPolling({ value: false }, res.progress || null);
       }
     } catch (err) {
       console.error("Regenerate failed:", err);
@@ -122,7 +183,7 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
           <div className="summary-loading-bar">
             <div className="summary-loading-fill" />
           </div>
-          <div className="summary-loading-text">Generating summary...</div>
+          <div className="summary-loading-text">{formatProgress(progress)}</div>
         </div>
       </div>
     );

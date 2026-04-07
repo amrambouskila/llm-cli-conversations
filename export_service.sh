@@ -106,14 +106,17 @@ start_summary_watcher() {
           continue
         fi
 
-        # Truncate large inputs to ~100K chars (~25K tokens) to stay within context limits.
-        # Keeps the first 50K and last 50K chars so the summary sees the beginning and end.
+        # The backend now bounds input size by chunking conversations into
+        # ~80K-char rollup pieces and recursively summarizing them, so this
+        # is a safety net only — we cap at ~400K chars (~100K tokens) so a
+        # single oversized segment can still pass through without blowing
+        # the haiku context window.
         input_size=$(wc -c < "$input" | tr -d ' ')
         truncated="$SUMMARY_DIR/${id}.truncated"
-        if [ "$input_size" -gt 100000 ]; then
-          head -c 50000 "$input" > "$truncated"
-          printf '\n\n[... %s characters truncated for summary ...]\n\n' "$((input_size - 100000))" >> "$truncated"
-          tail -c 50000 "$input" >> "$truncated"
+        if [ "$input_size" -gt 400000 ]; then
+          head -c 200000 "$input" > "$truncated"
+          printf '\n\n[... %s characters truncated for summary ...]\n\n' "$((input_size - 400000))" >> "$truncated"
+          tail -c 200000 "$input" >> "$truncated"
         else
           cp "$input" "$truncated"
         fi

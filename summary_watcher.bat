@@ -18,13 +18,15 @@ for %%F in ("%SUMMARY_DIR%\*.pending") do (
         set "OUTPUT=%SUMMARY_DIR%\!BASENAME!.md"
 
         if exist "!INPUT!" (
-            REM Truncate large inputs: keep first+last 50K chars (~25K tokens)
+            REM Safety net only: backend hierarchical summarization keeps
+            REM individual jobs around 80K chars. Anything larger than 400K
+            REM (~100K tokens) gets head/tail truncated so it still fits in
+            REM the haiku context window.
             for %%S in ("!INPUT!") do set "FSIZE=%%~zS"
             set "TRUNCATED=%TEMP%\claude_summary_input.tmp"
 
-            if !FSIZE! GTR 100000 (
-                REM PowerShell one-liner to grab first 50K + last 50K
-                powershell -NoProfile -Command "$c=[IO.File]::ReadAllText('!INPUT!'); $len=$c.Length; $cut=$len-100000; [IO.File]::WriteAllText('!TRUNCATED!', $c.Substring(0,50000)+\"`n`n[... $cut characters truncated for summary ...]`n`n\"+$c.Substring($len-50000))"
+            if !FSIZE! GTR 400000 (
+                powershell -NoProfile -Command "$c=[IO.File]::ReadAllText('!INPUT!'); $len=$c.Length; $cut=$len-400000; [IO.File]::WriteAllText('!TRUNCATED!', $c.Substring(0,200000)+\"`n`n[... $cut characters truncated for summary ...]`n`n\"+$c.Substring($len-200000))"
             ) else (
                 copy /y "!INPUT!" "!TRUNCATED!" >nul 2>&1
             )
