@@ -8,3 +8,5 @@ raw/
 markdown/
 markdown_codex/
 browser_state/
+.claude/settings.local.json
+CLAUDE.local.md

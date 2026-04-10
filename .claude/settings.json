@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/Users/amrambouskila/IMPORTANT/Projects/conversations/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat | python3 -c \"\nimport sys, json, subprocess\ndata = json.load(sys.stdin)\nf = data.get('tool_input', {}).get('file_path', '')\nif not f: sys.exit(0)\nif f.endswith('.py'):\n    r = subprocess.run(['python3', '-m', 'py_compile', f], capture_output=True, text=True)\n    if r.returncode != 0:\n        print(r.stderr, file=sys.stderr)\nif f.endswith('.json'):\n    r = subprocess.run(['python3', '-m', 'json.tool', f], capture_output=True, text=True)\n    if r.returncode != 0:\n        print(f'Invalid JSON: {f}', file=sys.stderr)\n\"",
+            "timeout": 10,
+            "statusMessage": "Checking syntax..."
+          }
+        ]
+      }
+    ]
+  }
+}

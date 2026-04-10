@@ -321,7 +321,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs on `http://localhost:5173` and proxies `/api/*` to FastAPI at `:5050`.
+The Vite dev server runs on `http://localhost:5174` and proxies `/api/*` to FastAPI at `:5050`.
 
 ## Implemented Features
 
