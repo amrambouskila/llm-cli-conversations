@@ -35,6 +35,7 @@ It is not a conversation browser. It is a search engine and a dashboard.
 | Cost anomaly highlighting | Flag sessions that are >2σ expensive for their length — catches loops/waste. |
 | Session type classification | Coding / debugging / planning / research / writing — needed for dashboard breakdowns. Cheap heuristic, no LLM. |
 | Weekly/monthly usage digest | Pre-computed summary: "This week: 14 sessions, $12.40, heaviest project: conversations." |
+| Graphify concept graph enrichment | Cross-session, cross-project concept graph via [graphify-ai](https://github.com/safishamsi/graphify). Powers "related sessions" discovery, richer topic extraction, and corpus-level structural overview. Runs as an optional sidecar — not a dependency. |
 
 ### Exclude
 
@@ -297,115 +298,38 @@ Flag logic:
 
 Migrate from in-memory index to **PostgreSQL** with `pgvector` for embeddings and built-in `tsvector` for full-text search. Add as a Docker Compose service alongside the app.
 
-### Extensions
+### Implementation
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;    -- pgvector for embeddings
-CREATE EXTENSION IF NOT EXISTS pg_trgm;   -- trigram similarity for fuzzy matching
-```
+- **ORM:** SQLAlchemy 2.0 async with declarative models (`browser/backend/models.py`)
+- **Driver:** asyncpg (via `sqlalchemy[asyncio]`)
+- **API schemas:** Pydantic v2 with `from_attributes=True` (`browser/backend/schemas.py`)
+- **Schema:** All tables live under the `conversations` Postgres schema (not `public`)
+- **Extensions:** `vector` (pgvector) and `pg_trgm` — created on app startup by `db.init_db()`
+- **Schema creation:** `Base.metadata.create_all()` runs on app startup in the FastAPI lifespan. No SQL migration files or Alembic — schema changes are applied by wiping the volume and re-running the loader (`docker compose down -v && docker compose up -d` then re-run `load.py`).
 
 ### Core Tables
 
-```sql
-CREATE TABLE sessions (
-    id              TEXT PRIMARY KEY,
-    provider        TEXT NOT NULL,       -- 'claude' | 'codex'
-    project         TEXT NOT NULL,
-    model           TEXT,                -- 'opus', 'sonnet', 'gpt-4o', etc.
-    conversation_id TEXT,                -- UUID from CLI
-    started_at      TIMESTAMPTZ,
-    ended_at        TIMESTAMPTZ,
-    turn_count      INTEGER,
-    input_tokens    INTEGER,             -- actual from JSONL usage data
-    output_tokens   INTEGER,             -- actual from JSONL usage data
-    cache_read_tokens INTEGER,           -- actual from JSONL usage data
-    cache_creation_tokens INTEGER,       -- actual from JSONL usage data
-    total_chars     INTEGER,
-    total_words     INTEGER,
-    estimated_cost  NUMERIC(10, 4),      -- USD, computed from actual tokens × model pricing
-    source_file     TEXT,
-    summary_text    TEXT,                -- for embedding input + display
-    session_type    TEXT,                -- 'coding','debugging','planning','research','writing','devops'
-    embedding       vector(384),         -- pgvector: 384-dim from all-MiniLM-L6-v2
-    hidden_at       TIMESTAMPTZ,         -- soft delete (NULL = visible)
-    search_vector   tsvector GENERATED ALWAYS AS (
-        to_tsvector('english', coalesce(summary_text, ''))
-    ) STORED,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
+All models are defined in `browser/backend/models.py`. The source of truth is the Python code; the table descriptions below are for reference.
 
-CREATE TABLE segments (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    segment_index   INTEGER,
-    role            TEXT,                -- 'user' | 'assistant'
-    timestamp       TIMESTAMPTZ,
-    char_count      INTEGER,
-    word_count      INTEGER,
-    input_tokens    INTEGER,             -- actual from JSONL (assistant turns only)
-    output_tokens   INTEGER,             -- actual from JSONL (assistant turns only)
-    raw_text        TEXT,
-    preview         TEXT,                -- first 200 chars, stripped
-    hidden_at       TIMESTAMPTZ,         -- soft delete (NULL = visible)
-    search_vector   tsvector GENERATED ALWAYS AS (
-        to_tsvector('english', coalesce(raw_text, ''))
-    ) STORED,
-    UNIQUE(session_id, segment_index)
-);
-
-CREATE TABLE tool_calls (
-    id              SERIAL PRIMARY KEY,
-    session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    segment_id      TEXT REFERENCES segments(id) ON DELETE CASCADE,
-    tool_name       TEXT NOT NULL,
-    tool_family     TEXT,                -- 'file_ops','search','execution','web','other'
-    timestamp       TIMESTAMPTZ
-);
-
-CREATE TABLE session_topics (
-    session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    topic           TEXT NOT NULL,
-    confidence      REAL,
-    PRIMARY KEY (session_id, topic)
-);
-
-CREATE TABLE saved_searches (
-    id              SERIAL PRIMARY KEY,
-    name            TEXT NOT NULL,
-    query           TEXT NOT NULL,
-    filters_json    JSONB,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-```
+| Table | Primary Key | Description |
+|-------|-------------|-------------|
+| `sessions` | `id TEXT` | One row per conversation/session. Holds provider, project, model, timestamps, token counts, estimated cost, summary text, session type, pgvector embedding (384-dim), soft-delete `hidden_at`, generated `tsvector` search column. |
+| `segments` | `id TEXT` | Individual request/response segments within a session. FK to `sessions`. Holds role, timestamps, char/word counts, raw text, preview, generated `tsvector`. UNIQUE on `(session_id, segment_index)`. |
+| `tool_calls` | `id SERIAL` | One row per tool invocation. FK to both `sessions` and `segments`. Holds tool name, tool family classification, timestamp. |
+| `session_topics` | `(session_id, topic)` | Auto-extracted topics per session. Holds confidence score and `source` ('heuristic' or 'graphify'). |
+| `saved_searches` | `id SERIAL` | User-saved search queries with JSONB filter storage. |
+| `concepts` | `id TEXT` | Graphify concept nodes (optional). Holds name, type, Leiden community ID, degree. |
+| `session_concepts` | `(session_id, concept_id, relationship)` | Graphify edges linking sessions to concepts (optional). Holds edge type and confidence. |
 
 ### Indexes
 
-```sql
--- Metadata filters
-CREATE INDEX idx_sessions_project ON sessions(project);
-CREATE INDEX idx_sessions_provider ON sessions(provider);
-CREATE INDEX idx_sessions_started ON sessions(started_at);
-CREATE INDEX idx_sessions_model ON sessions(model);
-CREATE INDEX idx_sessions_cost ON sessions(estimated_cost);
-CREATE INDEX idx_sessions_type ON sessions(session_type);
-CREATE INDEX idx_segments_session ON segments(session_id);
-CREATE INDEX idx_tool_calls_session ON tool_calls(session_id);
-CREATE INDEX idx_tool_calls_name ON tool_calls(tool_name);
-CREATE INDEX idx_session_topics_topic ON session_topics(topic);
+Defined in `models.py` `__table_args__`:
 
--- Full-text search (GIN indexes on generated tsvector columns)
-CREATE INDEX idx_sessions_fts ON sessions USING GIN(search_vector);
-CREATE INDEX idx_segments_fts ON segments USING GIN(search_vector);
-
--- Vector similarity (HNSW for fast approximate nearest neighbor)
-CREATE INDEX idx_sessions_embedding ON sessions
-    USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
-
--- Trigram index for fuzzy/partial matching
-CREATE INDEX idx_sessions_summary_trgm ON sessions
-    USING GIN(summary_text gin_trgm_ops);
-```
+- **Metadata filters:** B-tree on `sessions.project`, `provider`, `started_at`, `model`, `estimated_cost`, `session_type`; `segments.session_id`; `tool_calls.session_id`, `tool_name`; `session_topics.topic`
+- **Full-text search:** GIN on `sessions.search_vector`, `segments.search_vector`
+- **Vector similarity:** HNSW on `sessions.embedding` with `vector_cosine_ops` (m=16, ef_construction=64)
+- **Fuzzy matching:** GIN trigram on `sessions.summary_text`
+- **Graphify:** B-tree on `session_concepts.concept_id`, `concepts.community_id`
 
 ### Example Queries
 
@@ -486,39 +410,17 @@ Extract topics from:
 
 > **Note:** This section captures the original high-level milestones. The detailed, phased migration plan is in @PLAN.md — follow that for execution order.
 
-### v1 — Foundation (1–2 weeks)
+### v1 — Foundation ✅ COMPLETE
 
-Goal: PostgreSQL backend + working hybrid search + basic dashboard.
-
-1. **PostgreSQL setup**
-   - Add `postgres` + `pgvector` service to docker-compose.yml
-   - Add `psycopg[binary]` to Python requirements
-   - Create schema migration script (tables, indexes, extensions)
-   - Write data loader: parse existing markdown → populate Postgres tables
-   - Keep existing markdown pipeline; add Postgres write as post-processing step
-
-2. **Keyword search upgrade**
-   - Replace substring search with `tsvector`/`tsquery` + `ts_rank`
-   - Add metadata filter parsing (`project:X after:Y tool:Bash`)
-   - Return session-level results with best-matching snippet
-   - Wire up to existing search UI
-
-3. **Topic extraction**
-   - Implement heuristic topic extractor
-   - Run on all existing sessions
-   - Store in `session_topics`
-
-4. **Session type classification**
-   - Implement heuristic classifier
-   - Run on all existing sessions
-   - Store in `sessions.session_type`
-
-5. **Dashboard v1**
-   - New "Dashboard" view toggle (Search | Dashboard)
-   - Summary cards (sessions, tokens, cost, projects)
-   - Cost over time (stacked area by project) — use Chart.js
-   - Project breakdown (horizontal bars)
-   - Tool usage (horizontal bars)
+Phases 0–2 delivered:
+- PostgreSQL 16 + pgvector in Docker Compose, SQLAlchemy 2.0 async + asyncpg + Pydantic v2
+- Data loader (`load.py`) populates Postgres from markdown + raw JSONL with actual token counts
+- Heuristic topic extraction (`topics.py`) and session type classification (`classify.py`)
+- Graphify concept graph import (`import_graph.py`, via `graphifyy` package)
+- All API endpoints migrated to read from Postgres via SQLAlchemy
+- Search upgraded from substring to tsvector full-text ranking
+- Hidden state migrated from file-based to Postgres `hidden_at` columns
+- Dashboard not yet built (Phase 4)
 
 ### v1.5 — Semantic Search (1–2 weeks)
 
@@ -606,3 +508,46 @@ This version is complete enough to be genuinely useful because:
 v1.5 (semantic search) is the high-value follow-up, but v1 alone already transforms the tool from a conversation browser into a search engine + dashboard.
 
 **Start with v1. Ship it. Use it for a week. Then decide if semantic search is worth the `sentence-transformers` dependency or if tsvector + filters already covers 90% of recall needs.**
+
+---
+
+## 9. Graphify Enrichment Layer
+
+[Graphify](https://github.com/safishamsi/graphify) (`graphify-ai`) is a dependency listed in `requirements.txt`. It transforms folders of mixed-media content into queryable knowledge graphs. It extracts named concepts and relationships from each file, labels edges as EXTRACTED, INFERRED (with confidence), or AMBIGUOUS, and runs Leiden community detection to cluster related concepts. Output goes to a `graphify-out/` directory containing `graph.json`, `graph.html`, and `GRAPH_REPORT.md`.
+
+Graphify runs inside the app container as part of the data loading pipeline. `load.py` invokes it against `markdown/` during data load, then `import_graph.py` reads the output and populates Postgres. If graph generation fails or produces no output, Graphify-dependent features are silently skipped — the system works fully without graph data.
+
+### What It Provides
+
+1. **Richer topic extraction.** The Phase 1.2 heuristic tagger (project name segments + file extensions + TF-IDF) produces flat tags. Graphify produces typed, connected concepts with confidence scores and relationship labels. When available, Graphify concepts are merged into `session_topics` with higher confidence, giving them ranking priority. The heuristic covers sessions Graphify might miss; Graphify provides depth where it runs.
+
+2. **"Related sessions" discovery.** The current plan has no mechanism for surfacing sessions that are conceptually related across projects. Graphify's graph edges provide this: sessions sharing concept nodes are structurally related even with different keywords and distant embeddings. This powers a "Related conversations" panel in search results.
+
+3. **Corpus-level structural overview.** `GRAPH_REPORT.md` and `graph.html` give a bird's-eye view of knowledge across all conversations — god nodes (highest-degree concepts), community clusters, and surprising cross-project connections. A qualitative complement to the quantitative KPI dashboard.
+
+4. **Community-based re-ranking signal.** In Phase 5 hybrid retrieval, Leiden community membership can serve as an optional re-ranking factor. Sessions in the same community get a small boost when co-occurring in search results, surfacing structural connections that embedding similarity misses.
+
+### Data Model Extension
+
+Two additional SQLAlchemy models in `browser/backend/models.py` (tables created on app startup, populated only when `graphify-out/graph.json` exists):
+
+- **`Concept`** — Graphify concept nodes: id, name, type, community_id (Leiden cluster), degree (edge count, identifies "god nodes"). Indexed on `community_id`.
+- **`SessionConcept`** — Edges linking sessions to concepts: session_id, concept_id, relationship (label), edge_type ('extracted'/'inferred'/'ambiguous'), confidence. Composite PK on `(session_id, concept_id, relationship)`. Indexed on `concept_id`.
+
+Import logic lives in `browser/backend/import_graph.py`. It also merges Graphify concepts into `session_topics` with `source='graphify'` and higher confidence than heuristic tags.
+
+### Integration Points
+
+| Phase | Step | What Happens |
+|-------|------|-------------|
+| 1 (Data Loader) | 1.5 (optional) | `import_graph.py` reads `graphify-out/graph.json`, maps nodes to sessions by file path, populates `concepts` and `session_concepts`. Skipped if file absent. |
+| 1.2 (Topics) | merge | If Graphify concepts exist for a session, merge them into `session_topics` with a `source='graphify'` marker and higher confidence than heuristic tags. |
+| 3 (Search) | 3.4 (optional) | "Related sessions" query: given a session, find other sessions sharing concept nodes. Display as a "Related" section below search results. |
+| 5 (Semantic) | 5.4 (optional) | Use `concepts.community_id` as a re-ranking signal in RRF fusion. Sessions in the same Leiden community as a top result get a small score boost. |
+
+### Constraints
+
+- `graphify-ai` is in `requirements.txt` and available inside the app container.
+- The app must produce a fully working system even if Graphify produces no output — every feature degrades gracefully to its non-Graphify baseline.
+- `graphify-out/` is gitignored. It is regenerated on each data load.
+- The import script (`import_graph.py`) is idempotent — safe to re-run after Graphify re-indexes.

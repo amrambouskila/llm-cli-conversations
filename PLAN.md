@@ -1,6 +1,6 @@
 # v2 Migration Plan
 
-**Current phase: 0 (not started)**
+**Current phase: 3 (not started)**
 
 Phased refactoring from in-memory index to PostgreSQL. Each phase produces a working system. No phase breaks existing functionality.
 
@@ -8,342 +8,72 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 ---
 
-## Phase 0 — Scaffolding
+## Phase 0 — Scaffolding ✅
 
-**Goal:** Set up Postgres infrastructure and backend module structure without changing any existing behavior.
+**Status: COMPLETE**
 
-### 0.1 — Add Postgres to Docker Compose
+**What was built:**
+- PostgreSQL 16 (pgvector/pgvector:pg16) added to `docker-compose.yml` with healthcheck, `pgdata` volume, `depends_on` with `service_healthy` condition
+- `DATABASE_URL=postgresql+asyncpg://conversations:conversations@postgres:5432/conversations` wired into `llm-browser` service
+- Backend split into modular routes: `index_store.py` + `routes/` (projects, segments, conversations, stats, summaries, visibility)
+- SQLAlchemy 2.0 async declarative models (`models.py`) define all 7 tables in the `conversations` schema — replaces the originally planned `schema.sql`
+- Pydantic v2 API schemas (`schemas.py`) with `from_attributes=True` — ready for Phase 2 endpoint migration
+- `db.py` with SQLAlchemy async engine + `async_sessionmaker` + `init_db()` that creates extensions, schema, and tables on app startup
+- Requirements: `sqlalchemy[asyncio]`, `asyncpg`, `pydantic`, `pgvector` (replaces originally planned `psycopg`/`psycopg_pool`)
 
-Add a `postgres` service to `docker-compose.yml` alongside the existing `llm-browser` service:
-
-```yaml
-services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: conversations-postgres
-    environment:
-      POSTGRES_USER: conversations
-      POSTGRES_PASSWORD: conversations
-      POSTGRES_DB: conversations
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./browser/backend/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-
-volumes:
-  pgdata:
-```
-
-Also update the `llm-browser` service to connect to Postgres:
-- Add `DATABASE_URL=postgresql://conversations:conversations@postgres:5432/conversations` to its environment
-- Add `depends_on: [postgres]` so it waits for the database
-
-The app won't use the connection yet, but it needs to be wired up so Phases 1 and 2 work without further docker-compose changes.
-
-### 0.2 — Create schema.sql
-
-Create `browser/backend/schema.sql` with the exact schema from DESIGN.md §5. This is the source of truth for the database — the design doc is the rationale, this file is the implementation.
-
-Contents:
-- `CREATE EXTENSION` for `vector` and `pg_trgm`
-- All table definitions (sessions, segments, tool_calls, session_topics, saved_searches)
-- All indexes (metadata, GIN for tsvector, HNSW for pgvector, trigram)
-- Mounted into Postgres container at `/docker-entrypoint-initdb.d/` so it runs on first boot
-
-**Schema changes after first boot:** `docker-entrypoint-initdb.d` only runs when the data volume is empty. If the schema changes later, either apply the change manually with `psql`, or wipe and recreate: `docker compose down -v && docker compose up -d postgres` then re-run `load.py`. No migration tool (Alembic etc.) is needed for this project's scale.
-
-### 0.3 — Split backend into modules
-
-Current `app.py` is one large file. Split into modules *without changing any logic*:
-
-```
-browser/backend/
-├── app.py              ← stays as FastAPI app, imports routes
-├── index_store.py      ← NEW: INDEX/CODEX_INDEX/INDEXES globals + get_index()
-├── routes/
-│   ├── __init__.py
-│   ├── projects.py     ← /api/projects, /api/providers
-│   ├── segments.py     ← /api/segments, /api/search
-│   ├── conversations.py← /api/projects/{p}/conversation/{c}
-│   ├── stats.py        ← /api/stats
-│   ├── summaries.py    ← /api/summary/*
-│   └── visibility.py   ← /api/hide/*, /api/restore/*, /api/hidden
-├── parser.py           ← unchanged
-├── state.py            ← unchanged
-├── db.py               ← NEW: Postgres connection pool (empty initially)
-├── schema.sql          ← NEW: database schema
-└── requirements.txt    ← add psycopg[binary], psycopg_pool
-```
-
-Each route module is a FastAPI `APIRouter`. `app.py` imports and includes them. Every endpoint returns the exact same JSON as before. The in-memory `INDEX` dict remains the data source.
-
-**What stays in `app.py`** (not moved to route modules):
-- FastAPI app creation, CORS middleware, lifespan context manager
-- The `_watch_loop()` and `sync_directory()` helpers
-- The `/api/update` endpoint (depends on export pipeline helpers)
-- The static file catch-all route `/{full_path:path}` (must be last)
-
-**Avoiding circular imports:** Extract `INDEX` / `CODEX_INDEX` / `INDEXES` / `get_index()` into a new `browser/backend/index_store.py` module. Both `app.py` and route modules import from `index_store` — never from each other. `app.py` writes to the globals (on startup and rebuild); route modules only read.
-
-**Verification:** Frontend works identically. All API responses unchanged. `api.js` needs zero changes.
-
-### 0.4 — Add psycopg to requirements
-
-```
-fastapi>=0.115
-uvicorn[standard]>=0.34
-psycopg[binary]>=3.2
-psycopg_pool>=3.2
-```
-
-### 0.5 — Create db.py connection module
-
-```python
-# browser/backend/db.py
-import os
-from contextlib import contextmanager
-from psycopg_pool import ConnectionPool
-
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://conversations:conversations@localhost:5432/conversations"
-)
-
-_pool = None
-
-def get_pool():
-    global _pool
-    if _pool is None:
-        _pool = ConnectionPool(DATABASE_URL, min_size=2, max_size=10)
-    return _pool
-
-@contextmanager
-def get_db():
-    pool = get_pool()
-    with pool.connection() as conn:
-        yield conn
-```
-
-At this point `db.py` exists but nothing calls it. The app still runs entirely off the in-memory index.
+**Architecture decision:** SQLAlchemy 2.0 async + asyncpg + Pydantic v2 instead of raw psycopg + SQL files. All tables in `conversations` schema (not `public`). Schema managed by Python models, created via `Base.metadata.create_all()` on startup — no SQL migration files.
 
 **Phase 0 deliverable:** Postgres is running, schema is created, backend is modular, connection pool exists. Zero behavior changes. Frontend untouched.
 
 ---
 
-## Phase 1 — Data Loader
+## Phase 1 — Data Loader ✅
 
-**Goal:** Populate Postgres from existing parsed data. Both the in-memory index and Postgres contain the same data. Postgres is not yet read by any API.
+**Status: COMPLETE**
 
-### 1.0 — Extract model and usage from raw JSONL
+**What was built:**
+- `jsonl_reader.py` — Extracts model names + actual token usage (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) from raw Claude JSONL files. Codex: extracts `model_provider` only (no token data available). Keyed by session UUID.
+- `load.py` — Async data loader that merges `parser.py` markdown output with `jsonl_reader.py` metadata. Groups segments into sessions by `conversation_id`. Upserts into `sessions`, `segments`, `tool_calls`, `session_topics` via SQLAlchemy `pg_insert` with `on_conflict_do_update` (idempotent). Computes `estimated_cost` from actual tokens x model pricing (cache read tokens at 10% of input price). Runnable standalone via `python load.py` or wired into the app.
+- `topics.py` — Heuristic topic extraction: project name segments, file extension keywords, keyword matching, tool-derived signals, word frequency. Returns up to 5 `(topic, confidence)` tuples per session.
+- `classify.py` — Heuristic session type classification into coding/debugging/planning/research/writing/devops based on tool counts, topic keywords, and session characteristics.
+- `import_graph.py` — Graphify concept graph import. `load.py` runs Graphify against `markdown/` to generate `graphify-out/graph.json`, then `import_graph.py` populates `concepts` and `session_concepts` tables and merges concepts into `session_topics` with `source='graphify'` and 0.9 confidence. Graphify is a dependency in `requirements.txt`. Failures are non-fatal.
+- `app.py` — `run_export_pipeline()` is now `async`, calls `load.py`'s `load_all()` after rebuilding the in-memory index. Watch loop also syncs Postgres on markdown changes. Postgres sync failures are non-fatal (logged, don't break pipeline).
 
-The raw JSONL files contain exact model names and token counts that the current markdown pipeline throws away. Every assistant record has:
+**Key design decisions:**
+- The markdown parsers (`convert_claude_jsonl_to_md.py`, `convert_codex_sessions.py`) are **not replaced** — they are the source of truth for conversation structure. `jsonl_reader.py` only supplements with metadata (model, tokens) that the markdown format doesn't preserve.
+- All DB writes use SQLAlchemy's PostgreSQL `INSERT ... ON CONFLICT DO UPDATE` for idempotency.
+- Tool calls are delete-and-reinsert per session (no natural unique key).
 
-```json
-{
-  "message": {
-    "model": "claude-opus-4-6",
-    "usage": {
-      "input_tokens": 3,
-      "output_tokens": 26,
-      "cache_read_input_tokens": 11269,
-      "cache_creation_input_tokens": 4849
-    }
-  }
-}
-```
-
-Create `browser/backend/jsonl_reader.py`:
-- `read_session_metadata(jsonl_dir) -> dict` — scans all JSONL files in a directory and extracts per-session metadata
-- **Claude JSONL** (files in `raw/projects/{project}/`):
-  - Each file is one conversation. The filename UUID = the conversation's `sessionId`
-  - `model`: from the first assistant record's `message.model` (e.g., `claude-opus-4-6`)
-  - Per-turn token usage: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` from `message.usage`
-  - Aggregated session totals (sum across all assistant turns in that file)
-  - Match to markdown conversations via the UUID in the filename, which corresponds to `conversation_id` in the parsed markdown headings
-- **Codex JSONL** (files in `~/.codex/sessions/{year}/{month}/{day}/`):
-  - Model name is NOT available (Codex CLI doesn't record it). Use `model_provider` from `session_meta` payload (e.g., `"openai"`)
-  - Token usage is NOT available. Fall back to `char_count // 4` estimation
-  - Session ID from `session_meta.payload.id`
-- Returns a dict keyed by session/conversation ID with model + aggregated usage (or None for fields unavailable in Codex)
-
-This module reads JSONL directly — it does NOT go through the markdown pipeline. The loader (1.1) will merge this metadata with the parsed markdown data.
-
-**Why this matters:** Without this, `sessions.model` is NULL (model comparison dashboard broken), and `estimated_cost` uses `char_count // 4` instead of real token counts. Claude JSONL has exact data — use it. Codex doesn't, so it falls back to estimates.
-
-### 1.1 — Create load.py
-
-Create `browser/backend/load.py` — a script that reads both sources:
-1. `parser.py` for markdown content (segments, text, tool calls)
-2. `jsonl_reader.py` for metadata (model, token usage)
-
-And writes every session, segment, and tool call into Postgres.
-
-This script:
-- Calls `build_index()` from `parser.py` for both Claude and Codex
-- Calls `read_session_metadata()` from `jsonl_reader.py` to get model + tokens
-- Merges both data sources by matching `conversation_id` / `sessionId`
-- Maps parsed segments into sessions using these rules:
-  - Segments with the same `conversation_id` belong to the same session
-  - Segments with `conversation_id = None` each become their own session (standalone requests)
-  - Session ID = the `conversation_id` if present, otherwise the segment's own ID
-  - Session timestamps: `started_at` = earliest segment timestamp, `ended_at` = latest
-  - Session metrics: aggregated from all constituent segments (sum of tokens, words, chars; count of turns)
-- Inserts into `sessions`, `segments`, `tool_calls` tables
-- Computes `estimated_cost` using actual tokens × model pricing. Pricing is a hardcoded dict in load.py:
-  ```python
-  # USD per 1M tokens (input / output)
-  MODEL_PRICING = {
-      'claude-opus-4-6':     (15.00, 75.00),
-      'claude-sonnet-4-6':   (3.00,  15.00),
-      'claude-haiku-4-5':    (0.80,  4.00),
-      # Codex fallback (rough estimate)
-      'openai':              (2.50,  10.00),
-  }
-  ```
-  Cache read tokens use 10% of input price. Cache creation tokens use full input price. Update these numbers as pricing changes.
-- Runs topic extraction heuristic (from DESIGN.md §5) and inserts into `session_topics`
-- Runs session type classification heuristic and updates `sessions.session_type`
-- Uses `ON CONFLICT DO UPDATE` so it can be re-run safely (idempotent)
-
-### 1.2 — Topic extraction module
-
-Create `browser/backend/topics.py`:
-- `extract_topics(session, segments) -> list[tuple[str, float]]`
-- Heuristic: project name segments + file extension keywords + TF-IDF top terms from user messages
-- Returns list of `(topic, confidence)` tuples
-
-### 1.3 — Session type classification module
-
-Create `browser/backend/classify.py`:
-- `classify_session(session, tool_counts, topics) -> str`
-- Heuristic from DESIGN.md §5
-- Returns one of: `coding`, `debugging`, `planning`, `research`, `writing`, `devops`
-
-### 1.4 — Wire load.py into the update pipeline
-
-When `app.py` rebuilds the in-memory index (via `/api/update` or the watch loop), also run the Postgres loader after rebuilding the index. This keeps Postgres in sync with the in-memory index.
-
-Both data sources now contain the same data, but all API reads still come from the in-memory index.
-
-**Phase 1 deliverable:** Postgres has all the data. You can query it directly with `psql` or any SQL tool. The app still serves from the in-memory index. Nothing is broken.
+**Phase 1 deliverable:** Postgres has all the data. You can query it directly with `psql`. The app still serves from the in-memory index. Nothing is broken.
 
 ---
 
-## Phase 2 — Migrate Reads (one endpoint at a time)
+## Phase 2 — Migrate Reads ✅
 
-**Goal:** Switch each API endpoint from in-memory index to Postgres, one at a time. After each switch, verify the frontend still works.
+**Status: COMPLETE**
 
-The key constraint: **every endpoint must return the exact same JSON shape as before.** The frontend (`api.js`) doesn't change. Only the backend data source changes.
+**What was built:**
+- All route modules (`stats`, `projects`, `segments`, `conversations`, `visibility`, `summaries`) rewritten to read from Postgres via SQLAlchemy async queries with `Depends(get_db)`.
+- All endpoints are `async def` with `AsyncSession` injection.
+- Queries use `select(Segment, Session).join(Session)` tuple pattern to avoid lazy-loading `MissingGreenlet` errors in async context.
+- Hidden state migrated from file-based `state.py` to `hidden_at` columns via `UPDATE` statements.
+- Search upgraded from substring matching to PostgreSQL `tsvector`/`ts_rank` full-text search — results are now ranked by relevance.
+- Summary endpoints migrated segment lookups to Postgres; filesystem-based summary pipeline (`.md`/`.pending`/`.input` files + watcher) unchanged.
+- `load_all()` runs on app startup in the lifespan, so Postgres is populated before the first request — no need to manually trigger `/api/update`.
+- In-memory index (`index_store.py`) still exists for the export pipeline (`app.py`'s `run_export_pipeline` and `_watch_loop`) but is no longer read by any route module.
 
-### Migration order (by dependency and risk):
+**Key implementation details:**
+- Avoided `selectinload`/relationship lazy loading entirely — all queries that need Session fields select `(Segment, Session)` as a tuple and unpack both explicitly.
+- Timestamp serialization uses `.isoformat().replace("+00:00", "Z")` to match the original ISO 8601 format the frontend expects.
+- Tool call counts computed via separate `COUNT` queries on `tool_calls` table since segments don't store `tool_call_count` directly.
 
-#### 2.1 — `/api/stats`
+**What's left for Phase 6 cleanup:**
+- Remove `index_store.py` and its imports from `app.py`
+- Remove `state.py` (hidden state now in Postgres)
+- Remove in-memory `init_indexes()` / `rebuild_index()` calls from `app.py`
+- Remove `_watch_loop` (Postgres loader handles sync)
 
-**Why first:** No frontend navigation depends on it. It's a pure aggregation. Easy to verify: compare JSON output before and after.
-
-Replace the Python loop that sums metrics across all segments with:
-```sql
-SELECT COUNT(*),
-       SUM(input_tokens), SUM(output_tokens),
-       SUM(total_words), SUM(estimated_cost)
-FROM sessions WHERE provider = $1 AND hidden_at IS NULL;
-```
-
-Monthly breakdown:
-```sql
-SELECT DATE_TRUNC('month', started_at),
-       SUM(input_tokens + output_tokens), COUNT(*)
-FROM sessions WHERE provider = $1 AND hidden_at IS NULL
-GROUP BY 1 ORDER BY 1;
-```
-
-#### 2.2 — `/api/providers`
-
-Simple: `SELECT provider, COUNT(*) FROM sessions GROUP BY provider`
-
-#### 2.3 — `/api/projects`
-
-This is the big one — the left pane depends on it. The current endpoint loops all projects, computes stats, filters hidden items. Replace with:
-
-```sql
-SELECT project, COUNT(*) as total_requests,
-       SUM(total_words) as words,
-       SUM(input_tokens + output_tokens) as tokens,
-       MIN(started_at) as first_activity, MAX(started_at) as last_activity
-FROM sessions WHERE provider = $1
-GROUP BY project ORDER BY last_activity DESC;
-```
-
-Hidden filtering moves from Python state.py checks to `WHERE hidden_at IS NULL` (the `hidden_at` column is already in the schema).
-
-#### 2.4 — `/api/projects/{project}/segments`
-
-```sql
-SELECT s.id, s.session_id, s.segment_index, s.preview, s.timestamp,
-       s.char_count, s.word_count, s.input_tokens, s.output_tokens
-FROM segments s
-JOIN sessions sess ON s.session_id = sess.id
-WHERE sess.project = $1 AND sess.provider = $2
-ORDER BY s.timestamp, s.segment_index;
-```
-
-#### 2.5 — `/api/segments/{segment_id}`
-
-```sql
-SELECT * FROM segments WHERE id = $1;
-```
-
-Plus tool breakdown:
-```sql
-SELECT tool_name, COUNT(*) FROM tool_calls WHERE segment_id = $1 GROUP BY tool_name;
-```
-
-#### 2.6 — `/api/projects/{project}/conversation/{conv_id}`
-
-```sql
-SELECT * FROM segments
-WHERE session_id IN (SELECT id FROM sessions WHERE conversation_id = $1 AND project = $2)
-ORDER BY segment_index;
-```
-
-#### 2.7 — `/api/search`
-
-Replace substring search with tsvector:
-```sql
-SELECT s.id, s.preview, sess.project, sess.provider,
-       ts_rank(s.search_vector, plainto_tsquery('english', $1)) AS rank
-FROM segments s
-JOIN sessions sess ON s.session_id = sess.id
-WHERE s.search_vector @@ plainto_tsquery('english', $1)
-ORDER BY rank DESC LIMIT 100;
-```
-
-This is the first endpoint where behavior *improves* — ranked results instead of substring matching.
-
-#### 2.8 — `/api/hide/*`, `/api/restore/*`, `/api/hidden`
-
-Migrate hidden state from `browser_state.json` to a `hidden_at TIMESTAMPTZ` column on sessions and segments. The `state.py` module gets replaced with SQL updates:
-
-```sql
-UPDATE sessions SET hidden_at = NOW() WHERE id = $1;
-UPDATE sessions SET hidden_at = NULL WHERE id = $1;
-```
-
-#### 2.9 — Summary endpoints
-
-These depend on the filesystem (`.md`, `.pending`, `.state.json` files) and the external summary watcher process. They need the in-memory index only for segment lookups, which by this point are already on Postgres. Migrate the segment lookups but leave the filesystem-based summary pipeline as-is — it works and isn't in scope for v2.
-
-### After all endpoints are migrated:
-
-- Remove `parser.py` import from route modules
-- Remove the global `INDEX` / `CODEX_INDEX` / `INDEXES` dicts from `app.py`
-- Remove the `build_index()` call on startup
-- Remove the `_watch_loop` (Postgres is the source of truth now; the loader runs after export)
-- Keep `parser.py` as a module — `load.py` still uses it to parse markdown before inserting into Postgres
-
-**Phase 2 deliverable:** All API reads come from Postgres. The in-memory index is gone. Frontend is unchanged. Search is now ranked. Hidden state is in the database.
+**Phase 2 deliverable:** All API reads come from Postgres. Frontend is unchanged. Search is now ranked via tsvector. Hidden state is in the database.
 
 ---
 
@@ -356,7 +86,7 @@ These depend on the filesystem (`.md`, `.pending`, `.state.json` files) and the 
 Create `browser/backend/search.py`:
 - Parse structured query syntax: `project:X after:Y tool:Bash docker auth`
 - Extract filter tokens, pass remainder as the free-text query
-- Return `ParsedQuery(text="docker auth", filters={project: "X", after: "2026-03-01", tools: ["Bash"]})`
+- Return a Pydantic `ParsedQuery` model: `ParsedQuery(text="docker auth", filters=SearchFilters(project="X", after=date(2026,3,1), tools=["Bash"]))`
 
 ### 3.2 — Session-level search results
 
@@ -371,6 +101,18 @@ The API response shape changes here — this is the first frontend change needed
 ### 3.3 — Filter UI
 
 Add filter chips to the search bar in the frontend. Clicking a chip adds the structured prefix to the query. Autocomplete for project names, model names, tool names, and topics from Postgres `DISTINCT` queries.
+
+### 3.4 — (Optional) Related sessions via concept graph
+
+**Condition:** Only available if `session_concepts` table has data (i.e., Graphify import ran in Phase 1.5). Gracefully absent otherwise — no empty "Related" section shown.
+
+Add a "Related sessions" feature to search results:
+- When viewing a session's detail or a search result, query `session_concepts` for other sessions sharing concept nodes with the current session
+- Rank related sessions by number of shared concepts (more shared = more related)
+- Display as a compact "Related conversations" section below the main search result or in the session detail view
+- API: `GET /api/sessions/{session_id}/related` — returns up to 5 related sessions with shared concept names
+- Query via SQLAlchemy: self-join `SessionConcept` aliased twice, join to `Concept` for names, group by session, order by shared count DESC, limit 5
+- Frontend: add a small "Related" section to the session detail view. Only rendered when the API returns results.
 
 **Phase 3 deliverable:** Search returns ranked, session-level results with metadata filters. Frontend has a proper search UI.
 
@@ -445,14 +187,14 @@ Add remaining charts:
 - Create `browser/backend/embed.py`:
   - `embed_text(text: str) -> list[float]` — returns 384-dim vector
   - `embed_session(session) -> list[float]` — builds compressed session text, embeds it
-- Extend `load.py` to generate embeddings for all sessions and store via `UPDATE sessions SET embedding = $1 WHERE id = $2`
-- Incremental: only embed sessions where `embedding IS NULL`
+- Extend `load.py` to generate embeddings for all sessions and store via SQLAlchemy `update(Session).where(Session.id == sid).values(embedding=vector)`
+- Incremental: only embed sessions where `Session.embedding.is_(None)`
 
 ### 5.2 — Hybrid retrieval
 
 Extend `search.py`:
 1. Embed the query text
-2. Run vector search: `ORDER BY embedding <=> $1::vector LIMIT 50`
+2. Run vector search via SQLAlchemy: `select(Session).order_by(Session.embedding.cosine_distance(query_vector)).limit(50)`
 3. Run tsvector search (already exists from Phase 3)
 4. Reciprocal Rank Fusion to merge results
 5. Apply recency boost + exact match bonus
@@ -461,6 +203,18 @@ Extend `search.py`:
 ### 5.3 — Frontend updates
 
 Search results should show a relevance indicator (score or visual ranking). No other frontend changes — the search result shape is already session-level from Phase 3.
+
+### 5.4 — (Optional) Community-based re-ranking signal
+
+**Condition:** Only active if `concepts` table has community data (i.e., Graphify import ran). Falls back to standard RRF when absent.
+
+Use Leiden community membership from Graphify as a re-ranking boost in the hybrid retrieval pipeline:
+- After RRF fusion produces the candidate list, check if multiple results share a `community_id` via `session_concepts → concepts`
+- Sessions in the same community as a top-ranked result get a small additive boost (e.g., `+0.05 * community_overlap_count`)
+- This is a tuning knob — the coefficient is configurable and defaults to a conservative value
+- Surfaces structural connections that both keyword and embedding similarity miss (e.g., Docker auth work in `conversations` related to Dockerfile work in `biochemistry`)
+
+This does not change the ranking formula for users without Graphify data — the community term is zero when no community data exists.
 
 **Phase 5 deliverable:** Hybrid semantic + keyword search as designed in DESIGN.md §3.
 
@@ -472,7 +226,7 @@ Search results should show a relevance indicator (score or visual ranking). No o
 
 ### 6.1 — Remove in-memory index code
 
-- Delete the `INDEX`, `CODEX_INDEX`, `INDEXES` globals if not already removed
+- Delete `index_store.py` and all imports of it from route modules
 - Remove `build_index()` call from startup
 - Remove `_watch_loop`
 - `parser.py` stays — it's used by `load.py` to parse markdown
@@ -502,14 +256,14 @@ Reflect the new architecture: Postgres as primary storage, no in-memory index, m
 
 ## Phase summary
 
-| Phase | What changes | What breaks | Frontend changes |
-|-------|-------------|-------------|-----------------|
-| 0 — Scaffolding | Postgres running, backend split into modules, schema exists | Nothing | None |
-| 1 — Data Loader | Postgres populated, topics + types extracted | Nothing | None |
-| 2 — Migrate Reads | API reads from Postgres instead of in-memory | Nothing (same JSON shapes) | None |
-| 3 — Search Upgrade | Ranked + filtered + session-level search | Search results shape changes | Search UI updated |
-| 4 — Dashboard | New dashboard view | Nothing | New Dashboard component |
-| 5 — Semantic Search | Vector embeddings + hybrid retrieval | Nothing | Minor search UI polish |
-| 6 — Cleanup | Dead code removed | Nothing | None |
+| Phase | Status | What changes | What breaks | Frontend changes |
+|-------|--------|-------------|-------------|-----------------|
+| 0 — Scaffolding | ✅ Done | Postgres running, SQLAlchemy models, Pydantic schemas, backend split into modules | Nothing | None |
+| 1 — Data Loader | ✅ Done | Postgres populated, topics + types extracted, optional Graphify concept import | Nothing | None |
+| 2 — Migrate Reads | ✅ Done | All API reads from Postgres via SQLAlchemy. Search upgraded to tsvector ranking. Hidden state in DB. | Nothing (same JSON shapes) | None |
+| 3 — Search Upgrade | Not started | Ranked + filtered + session-level search, optional "Related sessions" via concept graph | Search results shape changes | Search UI updated |
+| 4 — Dashboard | Not started | New dashboard view | Nothing | New Dashboard component |
+| 5 — Semantic Search | Not started | Vector embeddings + hybrid retrieval, optional community-based re-ranking | Nothing | Minor search UI polish |
+| 6 — Cleanup | Not started | Dead code removed (index_store.py, state.py, in-memory globals) | Nothing | None |
 
 Every phase produces a working system. Phases 0–2 are invisible to the frontend. Phase 3 is the first user-visible improvement. Phase 4 is the second. Phase 5 is the third.

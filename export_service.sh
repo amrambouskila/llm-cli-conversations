@@ -7,6 +7,7 @@ set -e
 SERVICE_PREFIX="llm-cli-conversation-export"
 COMPOSE_FILE="docker-compose.yml"
 PORT="${PORT:-5050}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 SUMMARY_MODEL="${SUMMARY_MODEL:-claude-haiku-4-5-20251001}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -43,16 +44,24 @@ check_python() {
 
 remove_images() {
   echo ""
-  echo "Searching for images starting with \"$SERVICE_PREFIX\"..."
+  echo "Searching for project images..."
   FOUND=0
+  # Remove images built by compose (match service prefix)
   for IMAGE in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -i "^${SERVICE_PREFIX}"); do
       echo "Found image: $IMAGE"
       echo "Removing image $IMAGE..."
       docker rmi -f "$IMAGE" 2>/dev/null || true
       FOUND=1
   done
+  # Remove the pgvector image used by the postgres service
+  if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^pgvector/pgvector"; then
+      echo "Found image: pgvector/pgvector:pg16"
+      echo "Removing image pgvector/pgvector:pg16..."
+      docker rmi -f pgvector/pgvector:pg16 2>/dev/null || true
+      FOUND=1
+  fi
   if [[ $FOUND -eq 0 ]]; then
-      echo "No images found matching prefix \"$SERVICE_PREFIX\"."
+      echo "No project images found."
   fi
 }
 
@@ -221,11 +230,13 @@ start_summary_watcher
 
 echo ""
 echo "=============================="
-echo "Service running at http://localhost:$PORT"
+echo "Services running:"
+echo "  Browser:    http://localhost:$PORT"
+echo "  Postgres:   localhost:$POSTGRES_PORT (conversations/conversations)"
 echo ""
-echo "Press k + Enter = stop but keep image"
-echo "Press q + Enter = stop & remove image"
-echo "Press v + Enter = stop, remove image, volumes & generated data"
+echo "Press k + Enter = stop but keep images"
+echo "Press q + Enter = stop & remove images"
+echo "Press v + Enter = stop, remove images, volumes (pgdata) & generated data"
 echo "Press r + Enter = full reset & restart (wipe, re-export, rebuild)"
 echo "=============================="
 
@@ -285,11 +296,13 @@ while true; do
 
             echo ""
             echo "=============================="
-            echo "Service restarted at http://localhost:$PORT"
+            echo "Services restarted:"
+            echo "  Browser:    http://localhost:$PORT"
+            echo "  Postgres:   localhost:$POSTGRES_PORT (conversations/conversations)"
             echo ""
-            echo "Press k + Enter = stop but keep image"
-            echo "Press q + Enter = stop & remove image"
-            echo "Press v + Enter = stop, remove image, volumes & generated data"
+            echo "Press k + Enter = stop but keep images"
+            echo "Press q + Enter = stop & remove images"
+            echo "Press v + Enter = stop, remove images, volumes (pgdata) & generated data"
             echo "Press r + Enter = full reset & restart (wipe, re-export, rebuild)"
             echo "=============================="
 

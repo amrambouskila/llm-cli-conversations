@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: conversations-postgres
+    environment:
+      POSTGRES_USER: conversations
+      POSTGRES_PASSWORD: conversations
+      POSTGRES_DB: conversations
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conversations"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   llm-browser:
     build:
       context: .
@@ -29,4 +47,11 @@ services:
       - CODEX_MARKDOWN_DIR=/data/markdown_codex
       - STATE_DIR=/data/state
       - STATIC_DIR=/app/static
+      - DATABASE_URL=postgresql+asyncpg://conversations:conversations@postgres:5432/conversations
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  pgdata:

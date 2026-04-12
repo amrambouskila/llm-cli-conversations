@@ -7,6 +7,7 @@ REM ============================================================
 set "SERVICE_PREFIX=llm-cli-conversation-export"
 set "COMPOSE_FILE=docker-compose.yml"
 if "%PORT%"=="" set "PORT=5050"
+if "%POSTGRES_PORT%"=="" set "POSTGRES_PORT=5432"
 if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-haiku-4-5-20251001"
 
 set "SCRIPT_DIR=%~dp0"
@@ -107,11 +108,13 @@ call :start_summary_watcher
 
 echo.
 echo ==============================
-echo Service running at http://localhost:%PORT%
+echo Services running:
+echo   Browser:    http://localhost:%PORT%
+echo   Postgres:   localhost:%POSTGRES_PORT% (conversations/conversations)
 echo.
-echo Press k + Enter = stop but keep image
-echo Press q + Enter = stop ^& remove image
-echo Press v + Enter = stop, remove image, volumes ^& generated data
+echo Press k + Enter = stop but keep images
+echo Press q + Enter = stop ^& remove images
+echo Press v + Enter = stop, remove images, volumes (pgdata) ^& generated data
 echo Press r + Enter = full reset ^& restart (wipe, re-export, rebuild)
 echo ==============================
 
@@ -183,11 +186,13 @@ call :start_summary_watcher
 
 echo.
 echo ==============================
-echo Service restarted at http://localhost:%PORT%
+echo Services restarted:
+echo   Browser:    http://localhost:%PORT%
+echo   Postgres:   localhost:%POSTGRES_PORT% (conversations/conversations)
 echo.
-echo Press k + Enter = stop but keep image
-echo Press q + Enter = stop ^& remove image
-echo Press v + Enter = stop, remove image, volumes ^& generated data
+echo Press k + Enter = stop but keep images
+echo Press q + Enter = stop ^& remove images
+echo Press v + Enter = stop, remove images, volumes (pgdata) ^& generated data
 echo Press r + Enter = full reset ^& restart (wipe, re-export, rebuild)
 echo ==============================
 
@@ -228,7 +233,7 @@ goto :eof
 
 :remove_images
 echo.
-echo Searching for images starting with "%SERVICE_PREFIX%"...
+echo Searching for project images...
 set "TARGET_IMAGE="
 for /f "delims=" %%I in ('
     docker images --format "{{.Repository}}:{{.Tag}}" ^| findstr /I "^%SERVICE_PREFIX%"
@@ -238,8 +243,16 @@ for /f "delims=" %%I in ('
     echo Removing image %%I...
     docker rmi -f "%%I" 2>nul
 )
+REM Remove the pgvector image used by the postgres service
+docker images --format "{{.Repository}}:{{.Tag}}" | findstr /I "^pgvector/pgvector" >nul 2>&1
+if not errorlevel 1 (
+    echo Found image: pgvector/pgvector:pg16
+    echo Removing image pgvector/pgvector:pg16...
+    docker rmi -f pgvector/pgvector:pg16 2>nul
+    set "TARGET_IMAGE=pgvector/pgvector:pg16"
+)
 if not defined TARGET_IMAGE (
-    echo No images found matching prefix "%SERVICE_PREFIX%".
+    echo No project images found.
 )
 goto :eof
 

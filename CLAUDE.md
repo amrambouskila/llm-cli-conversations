@@ -23,9 +23,19 @@ Raw JSONL (Claude/Codex CLI)
 - `convert_claude_jsonl_to_md.py` — Claude CLI JSONL → Markdown
 - `convert_codex_sessions.py` — Codex CLI sessions → Markdown
 - `convert_export.py` — Cross-platform export orchestrator
-- `browser/backend/app.py` — FastAPI app (API + serves React build)
+- `browser/backend/app.py` — FastAPI app (API + serves React build), lifespan initializes DB
+- `browser/backend/models.py` — SQLAlchemy 2.0 declarative models (all 7 tables, `conversations` schema)
+- `browser/backend/schemas.py` — Pydantic v2 request/response models (`from_attributes=True`)
+- `browser/backend/db.py` — SQLAlchemy async engine + session maker, `init_db()` creates extensions/schema/tables
+- `browser/backend/index_store.py` — In-memory index globals (INDEX, CODEX_INDEX) + get_index()
+- `browser/backend/routes/` — APIRouter modules (projects, segments, conversations, stats, summaries, visibility)
 - `browser/backend/parser.py` — Markdown → in-memory index builder
-- `browser/backend/state.py` — Persistent hide/restore state
+- `browser/backend/jsonl_reader.py` — Extracts model + token usage from raw JSONL files
+- `browser/backend/load.py` — Merges parser + JSONL data, upserts into Postgres
+- `browser/backend/topics.py` — Heuristic topic extraction per session
+- `browser/backend/classify.py` — Heuristic session type classification
+- `browser/backend/import_graph.py` — Optional Graphify concept graph import
+- `browser/backend/state.py` — Persistent hide/restore state (file-based, pre-Postgres)
 - `browser/frontend/src/App.jsx` — React root component
 - `browser/frontend/src/components/` — UI components (ProjectList, RequestList, ContentViewer, MetadataPanel, Charts)
 
@@ -33,29 +43,40 @@ Raw JSONL (Claude/Codex CLI)
 
 - **Frontend:** React 19 + Vite 6, custom CSS (dark/light themes), no component library
 - **Backend:** FastAPI + Uvicorn, Python 3.13
-- **Storage:** Currently in-memory index rebuilt from markdown files on startup. Migrating to PostgreSQL + pgvector.
+- **ORM / DB layer:** SQLAlchemy 2.0 async + asyncpg, Pydantic v2 for API schemas
+- **Storage:** PostgreSQL 16 (pgvector/pgvector:pg16) with pgvector + pg_trgm extensions. All tables in the `conversations` schema. Schema managed by SQLAlchemy declarative models (`models.py`), created on app startup via `Base.metadata.create_all()`.
 - **Deployment:** Docker (multi-stage: Node build → Python runtime), docker-compose with volume mounts
 - **Port:** 5050 (FastAPI serves API + static React build)
+
+### Graphify Enrichment
+
+[Graphify](https://github.com/safishamsi/graphify) (`graphify-ai`) is a dependency in `requirements.txt`. It transforms the `markdown/` directory into a cross-session concept graph (`graphify-out/graph.json`). On data load, `import_graph.py` reads the graph and populates `concepts` and `session_concepts` tables in Postgres, enabling richer topic data and "related sessions" discovery. See DESIGN.md §9 for full details.
 
 ### Data Flow
 
 1. Raw JSONL synced from `~/.claude/projects/` and `~/.codex/sessions/`
-2. Python parsers convert to one markdown file per project
+2. Python parsers (`convert_*.py`) convert to one markdown file per project
 3. `parser.py` splits markdown on `>>>USER_REQUEST<<<` delimiters into segments
 4. Segments grouped by conversation_id into sessions
 5. Metrics computed: char/word/line/token counts, tool breakdowns
-6. Index served via REST API at `/api/*`
+6. In-memory index served via REST API at `/api/*` (current, being migrated)
+7. `jsonl_reader.py` extracts model names + actual token usage from raw JSONL
+8. `load.py` merges parser + JSONL data and upserts into Postgres (sessions, segments, tool_calls, session_topics)
+9. `topics.py` + `classify.py` run heuristic topic extraction and session type classification
+10. `import_graph.py` optionally loads Graphify concept graph when `graphify-out/graph.json` exists
 
 ## Current State
 
-The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. The system currently uses an in-memory index rebuilt from markdown files on startup, with substring search.
+The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0, 1, and 2 of the v2 migration are complete:
 
-### Next: v2 Upgrades
+- **Phase 0 (done):** PostgreSQL 16 with pgvector running in Docker Compose. Backend split into modular routes. SQLAlchemy 2.0 async models define the `conversations` schema (7 tables). Pydantic v2 schemas ready for API layer. Database initialized on app startup via `init_db()`.
+- **Phase 1 (done):** Data loader pipeline (`load.py`) populates Postgres from parsed markdown + raw JSONL metadata. Heuristic topic extraction and session type classification. Graphify concept graph import (via `graphifyy` package). Wired into `/api/update`, watch loop, and app startup.
+- **Phase 2 (done):** All API endpoints read from Postgres via SQLAlchemy async queries. Search upgraded from substring to tsvector full-text ranking. Hidden state stored in Postgres `hidden_at` columns. In-memory index retained only for the export pipeline.
 
-Migrate to PostgreSQL + pgvector for persistent storage, ranked search, and a proper dashboard.
+### Next: v2 Upgrades (Phase 3+)
 
 - @DESIGN.md — product direction, schema, dashboard spec, anti-bloat guardrails
-- @PLAN.md — phased migration plan (6 phases, each produces a working system)
+- @PLAN.md — phased migration plan (7 phases, each produces a working system)
 
 **When working on v2:** Follow PLAN.md phases in order (0 → 1 → 2 → 3 → 4 → 5 → 6). Do not skip ahead — each phase depends on the previous one. Check which phase is current before starting work. Each phase must produce a working system before moving to the next.
 
