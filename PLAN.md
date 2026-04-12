@@ -333,14 +333,14 @@ Create `.github/workflows/ci.yml`:
 
 ## Phase summary
 
-| Phase | Status | What changes | What breaks | Frontend changes |
-|-------|--------|-------------|-------------|-----------------|
-| 0 — Scaffolding | ✅ Done | Postgres running, SQLAlchemy models, Pydantic schemas, backend split into modules | Nothing | None |
-| 1 — Data Loader | ✅ Done | Postgres populated, topics + types extracted, optional Graphify concept import | Nothing | None |
-| 2 — Migrate Reads | ✅ Done | All API reads from Postgres via SQLAlchemy. Search upgraded to tsvector ranking. Hidden state in DB. | Nothing (same JSON shapes) | None |
-| 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
-| 4 — Dashboard | Not started | Dashboard view with Chart.js charts + d3 concept graph visualization | Nothing | Dashboard component, ConceptGraph component, Chart.js + d3 deps |
-| 5 — Semantic Search | Not started | Vector embeddings + hybrid retrieval, optional community-based re-ranking | Nothing | Minor search UI polish |
-| 6 — Cleanup, Testing & CI | Not started | Dead code removed, OOP refactoring (service/repository layers), full test suite (pytest + vitest), GitHub Actions CI pipeline | Nothing | None (internal quality) |
+| Phase | Status | What changes                                                                                                                                                                                                                                        | What breaks | Frontend changes |
+|-------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|-----------------|
+| 0 — Scaffolding | ✅ Done | Postgres running, SQLAlchemy models, Pydantic schemas, backend split into modules                                                                                                                                                                   | Nothing | None |
+| 1 — Data Loader | ✅ Done | Postgres populated, topics + types extracted, optional Graphify concept import                                                                                                                                                                      | Nothing | None |
+| 2 — Migrate Reads | ✅ Done | All API reads from Postgres via SQLAlchemy. Search upgraded to tsvector ranking. Hidden state in DB.                                                                                                                                                | Nothing (same JSON shapes) | None |
+| 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint                                                                                                                                        | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
+| 4 — Dashboard | Not started | Dashboard view with Chart.js charts + d3 concept graph visualization                                                                                                                                                                                | Nothing | Dashboard component, ConceptGraph component, Chart.js + d3 deps |
+| 5 — Semantic Search | Not started | Vector embeddings + hybrid retrieval, optional community-based re-ranking                                                                                                                                                                           | Nothing | Minor search UI polish |
+| 6 — Cleanup, Testing & CI | Not started | Dead code removed, OOP refactoring (service/repository layers), full test suite (pytest + vitest), GitHub Actions CI pipeline with semver (starting at 1.0.0 with patch, minor, and major options in github ui when releasing new version pipeline) | Nothing | None (internal quality) |
 
 Every phase produces a working system. Phases 0–2 are invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**
