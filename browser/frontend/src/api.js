@@ -42,6 +42,18 @@ export async function searchSegments(query, provider = "claude") {
   return request(`${BASE}/api/search?q=${encodeURIComponent(query)}&provider=${provider}`);
 }
 
+export async function searchSessions(query, provider = "claude") {
+  return request(`${BASE}/api/search?q=${encodeURIComponent(query)}&provider=${provider}`);
+}
+
+export async function fetchSearchFilters(provider = "claude") {
+  return request(`${BASE}/api/search/filters?provider=${provider}`);
+}
+
+export async function fetchRelatedSessions(sessionId) {
+  return request(`${BASE}/api/sessions/${encodeURIComponent(sessionId)}/related`);
+}
+
 export async function fetchStats(provider = "claude") {
   return request(`${BASE}/api/stats?provider=${provider}`);
 }

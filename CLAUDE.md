@@ -28,6 +28,7 @@ Raw JSONL (Claude/Codex CLI)
 - `browser/backend/schemas.py` — Pydantic v2 request/response models (`from_attributes=True`)
 - `browser/backend/db.py` — SQLAlchemy async engine + session maker, `init_db()` creates extensions/schema/tables
 - `browser/backend/index_store.py` — In-memory index globals (INDEX, CODEX_INDEX) + get_index()
+- `browser/backend/search.py` — Query parser: extracts structured filter prefixes from free text, returns `ParsedQuery` Pydantic model
 - `browser/backend/routes/` — APIRouter modules (projects, segments, conversations, stats, summaries, visibility)
 - `browser/backend/parser.py` — Markdown → in-memory index builder
 - `browser/backend/jsonl_reader.py` — Extracts model + token usage from raw JSONL files
@@ -37,7 +38,7 @@ Raw JSONL (Claude/Codex CLI)
 - `browser/backend/import_graph.py` — Optional Graphify concept graph import
 - `browser/backend/state.py` — Persistent hide/restore state (file-based, pre-Postgres)
 - `browser/frontend/src/App.jsx` — React root component
-- `browser/frontend/src/components/` — UI components (ProjectList, RequestList, ContentViewer, MetadataPanel, Charts)
+- `browser/frontend/src/components/` — UI components (ProjectList, RequestList, SearchResults, FilterChips, ContentViewer, MetadataPanel, Charts, SummaryPanel)
 
 ### Tech Stack
 
@@ -67,13 +68,14 @@ Raw JSONL (Claude/Codex CLI)
 
 ## Current State
 
-The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0, 1, and 2 of the v2 migration are complete:
+The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 3 of the v2 migration are complete:
 
 - **Phase 0 (done):** PostgreSQL 16 with pgvector running in Docker Compose. Backend split into modular routes. SQLAlchemy 2.0 async models define the `conversations` schema (7 tables). Pydantic v2 schemas ready for API layer. Database initialized on app startup via `init_db()`.
 - **Phase 1 (done):** Data loader pipeline (`load.py`) populates Postgres from parsed markdown + raw JSONL metadata. Heuristic topic extraction and session type classification. Graphify concept graph import (via `graphifyy` package). Wired into `/api/update`, watch loop, and app startup.
 - **Phase 2 (done):** All API endpoints read from Postgres via SQLAlchemy async queries. Search upgraded from substring to tsvector full-text ranking. Hidden state stored in Postgres `hidden_at` columns. In-memory index retained only for the export pipeline.
+- **Phase 3 (done):** Search returns session-level results with metadata filter parsing (`project:`, `model:`, `tool:`, `topic:`, `after:`, `before:`, `cost:>`, `turns:>`). Frontend renders session cards with snippet highlighting, filter chips with autocomplete dropdowns, and click-to-navigate. Related sessions endpoint via Graphify concept graph (graceful when no data). New files: `search.py`, `SearchResults.jsx`, `FilterChips.jsx`.
 
-### Next: v2 Upgrades (Phase 3+)
+### Next: v2 Upgrades (Phase 4+)
 
 - @DESIGN.md — product direction, schema, dashboard spec, anti-bloat guardrails
 - @PLAN.md — phased migration plan (7 phases, each produces a working system)
@@ -82,20 +84,28 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 
 ### v1 Targets
 
-- [ ] PostgreSQL service in docker-compose (pgvector + pg_trgm extensions)
-- [ ] Schema: sessions, segments, tool_calls, session_topics tables with tsvector columns
-- [ ] `psycopg` integration in FastAPI backend
-- [ ] tsvector/tsquery keyword search replacing substring match
-- [ ] Metadata filter parsing in search bar
-- [ ] Session-level search results with ranked snippets
-- [ ] Heuristic topic extraction and session type classification
+- [x] PostgreSQL service in docker-compose (pgvector + pg_trgm extensions)
+- [x] Schema: sessions, segments, tool_calls, session_topics tables with tsvector columns
+- [x] asyncpg integration in FastAPI backend (via SQLAlchemy 2.0 async)
+- [x] tsvector/tsquery keyword search replacing substring match
+- [x] Metadata filter parsing in search bar
+- [x] Session-level search results with ranked snippets
+- [x] Heuristic topic extraction and session type classification
 - [ ] Dashboard view with cost-over-time, project breakdown, tool usage, summary cards
+- [ ] Graphify concept graph visualization (d3 force-directed, Phase 4)
 
 ### v1.5 Targets
 
 - [ ] Semantic search via `all-MiniLM-L6-v2` + `pgvector`
 - [ ] Hybrid retrieval with Reciprocal Rank Fusion
 - [ ] Dashboard: model comparison, session type distribution, activity heatmap
+
+### v2 Targets (Project Completion)
+
+- [ ] Dead code removal (index_store.py, state.py, in-memory globals)
+- [ ] OOP refactoring: service layer + repository pattern
+- [ ] Full unit + integration test suite (pytest + vitest)
+- [ ] GitHub Actions CI pipeline (lint, test, coverage, build, docker-build)
 
 ## Development
 

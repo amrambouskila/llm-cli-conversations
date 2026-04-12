@@ -410,9 +410,9 @@ Extract topics from:
 
 > **Note:** This section captures the original high-level milestones. The detailed, phased migration plan is in @PLAN.md — follow that for execution order.
 
-### v1 — Foundation ✅ COMPLETE
+### v1 — Foundation + Search ✅ COMPLETE
 
-Phases 0–2 delivered:
+Phases 0–3 delivered:
 - PostgreSQL 16 + pgvector in Docker Compose, SQLAlchemy 2.0 async + asyncpg + Pydantic v2
 - Data loader (`load.py`) populates Postgres from markdown + raw JSONL with actual token counts
 - Heuristic topic extraction (`topics.py`) and session type classification (`classify.py`)
@@ -420,6 +420,9 @@ Phases 0–2 delivered:
 - All API endpoints migrated to read from Postgres via SQLAlchemy
 - Search upgraded from substring to tsvector full-text ranking
 - Hidden state migrated from file-based to Postgres `hidden_at` columns
+- Session-level search results with metadata filter parsing and ranked snippets
+- Filter UI with chips, autocomplete dropdowns, and active filter tags
+- Related sessions endpoint via Graphify concept graph
 - Dashboard not yet built (Phase 4)
 
 ### v1.5 — Semantic Search (1–2 weeks)

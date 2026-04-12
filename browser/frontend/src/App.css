@@ -1207,3 +1207,235 @@ body {
   padding: 4px 8px;
   flex-shrink: 0;
 }
+
+/* ============================================================
+   Filter bar expanded (chips + date filter combined)
+   ============================================================ */
+.filter-bar-expanded {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.filter-bar-expanded .date-filter-bar {
+  border-bottom: none;
+}
+
+/* ============================================================
+   Filter chips
+   ============================================================ */
+.filter-chips-container {
+  padding: 6px 16px;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-chip-wrapper {
+  position: relative;
+}
+
+.filter-chip {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--bg-surface2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.filter-chip-active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+/* Active filter tags */
+.active-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.active-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 10px;
+}
+
+.active-filter-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+
+.active-filter-remove:hover {
+  opacity: 1;
+}
+
+/* Filter dropdown */
+.filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  min-width: 180px;
+  max-width: 280px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  margin-top: 4px;
+}
+
+.filter-dropdown-search {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--bg-surface2);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  color: var(--text);
+  outline: none;
+}
+
+.filter-dropdown-search:focus {
+  background: var(--bg-hover);
+}
+
+.filter-dropdown-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.filter-dropdown-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.filter-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.filter-dropdown-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* ============================================================
+   Search results (session cards)
+   ============================================================ */
+.search-results {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-result-card {
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.search-result-card:hover {
+  background: var(--bg-hover);
+}
+
+.search-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+
+.search-result-project {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.search-result-date {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.search-result-meta-line {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.search-result-model {
+  color: var(--text-dim);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.search-result-cost {
+  color: var(--accent2);
+  font-weight: 600;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.search-result-snippet {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.search-result-snippet mark {
+  background: var(--mark-bg);
+  color: var(--mark-text);
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.search-result-footer {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+}
+
+.search-result-tools {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.search-result-topics {
+  color: var(--tool-badge);
+}

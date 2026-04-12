@@ -1,6 +1,6 @@
 # v2 Migration Plan
 
-**Current phase: 3 (not started)**
+**Current phase: 4 (not started)**
 
 Phased refactoring from in-memory index to PostgreSQL. Each phase produces a working system. No phase breaks existing functionality.
 
@@ -77,44 +77,27 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 ---
 
-## Phase 3 — Search Upgrade
+## Phase 3 — Search Upgrade ✅
 
-**Goal:** Add metadata filter parsing and session-level results to the search endpoint.
+**Status: COMPLETE**
 
-### 3.1 — Filter parser
+**What was built:**
+- `browser/backend/search.py` — Filter parser module with `ParsedQuery` and `SearchFilters` Pydantic models. Parses structured query syntax (`project:`, `model:`, `provider:`, `after:`, `before:`, `tool:`, `topic:`, `cost:>`, `turns:>`) mixed with free text. Malformed filter values are left in the free-text query (no crash).
+- `/api/search` endpoint rewritten for session-level results: searches segments via tsvector, groups by session, picks best-matching segment as snippet, applies metadata filters as SQL WHERE clauses, returns session-level objects with `session_id`, `project`, `date`, `model`, `cost`, `snippet`, `tool_summary`, `tools`, `turn_count`, `topics`, `conversation_id`, `rank`.
+- `GET /api/search/filters` — returns distinct values for autocomplete: `projects`, `models`, `tools`, `topics`.
+- `GET /api/sessions/{session_id}/related` — finds sessions sharing Graphify concept nodes. Returns up to 5 related sessions ranked by shared concept count. Returns `[]` gracefully when no concept data exists.
+- `SearchResults.jsx` — session-level search result cards with project, date, model, cost, snippet (with query term highlighting), tool summary, turn count, topics. Clicking a card navigates to that conversation.
+- `FilterChips.jsx` — filter chip buttons with autocomplete dropdowns for project/model/tool/topic values, active filter tags with remove buttons.
+- `App.jsx` updated: session-level search flow, filter options loaded on mount, `SearchResults` rendered in search mode, `FilterChips` in expanded filter bar, provider switch clears search state.
+- `App.css` extended: styles for filter chips, dropdowns, active filter tags, search result session cards — all using existing CSS custom properties for dark/light theme support.
 
-Create `browser/backend/search.py`:
-- Parse structured query syntax: `project:X after:Y tool:Bash docker auth`
-- Extract filter tokens, pass remainder as the free-text query
-- Return a Pydantic `ParsedQuery` model: `ParsedQuery(text="docker auth", filters=SearchFilters(project="X", after=date(2026,3,1), tools=["Bash"]))`
+**Key design decisions:**
+- Search response shape changed from segment-level to session-level — this is the first breaking API change. The old `searchSegments()` function still exists in `api.js` for backward compatibility but `App.jsx` now uses `searchSessions()`.
+- Filter-only queries (no free text) return sessions matching metadata filters ordered by recency — enabling browsing by dimension (e.g., `project:conversations` shows all sessions in that project).
+- Snippet extraction centers a ~250-char window around the first occurrence of query terms in the best-matching segment, stripping markdown noise.
+- The existing segment detail, segment export, and all non-search endpoints are completely untouched.
 
-### 3.2 — Session-level search results
-
-Current search returns individual segments. Change to:
-1. Search segments with tsvector
-2. Group results by session_id
-3. For each session, pick the best-matching segment as the snippet
-4. Return session-level results with: project, date, model, cost, snippet, tool summary, topics, turn count
-
-The API response shape changes here — this is the first frontend change needed. Update the search results UI to render session cards instead of individual segment rows.
-
-### 3.3 — Filter UI
-
-Add filter chips to the search bar in the frontend. Clicking a chip adds the structured prefix to the query. Autocomplete for project names, model names, tool names, and topics from Postgres `DISTINCT` queries.
-
-### 3.4 — (Optional) Related sessions via concept graph
-
-**Condition:** Only available if `session_concepts` table has data (i.e., Graphify import ran in Phase 1.5). Gracefully absent otherwise — no empty "Related" section shown.
-
-Add a "Related sessions" feature to search results:
-- When viewing a session's detail or a search result, query `session_concepts` for other sessions sharing concept nodes with the current session
-- Rank related sessions by number of shared concepts (more shared = more related)
-- Display as a compact "Related conversations" section below the main search result or in the session detail view
-- API: `GET /api/sessions/{session_id}/related` — returns up to 5 related sessions with shared concept names
-- Query via SQLAlchemy: self-join `SessionConcept` aliased twice, join to `Concept` for names, group by session, order by shared count DESC, limit 5
-- Frontend: add a small "Related" section to the session detail view. Only rendered when the API returns results.
-
-**Phase 3 deliverable:** Search returns ranked, session-level results with metadata filters. Frontend has a proper search UI.
+**Phase 3 deliverable:** Search returns ranked, session-level results with metadata filters. Frontend has session cards, filter chips with autocomplete, and click-to-navigate. Related sessions endpoint available when Graphify data exists.
 
 ---
 
@@ -172,7 +155,28 @@ Add remaining charts:
 - Global filter bar
 - Click-to-filter on all charts
 
-**Phase 4 deliverable:** Full dashboard as designed in DESIGN.md §4.
+### 4.4 — Concept graph visualization (Graphify)
+
+**Condition:** Only rendered when `concepts` and `session_concepts` tables have data. Gracefully absent otherwise — no empty graph placeholder.
+
+Add a "Knowledge Graph" section to the dashboard:
+
+**Backend:**
+- `GET /api/dashboard/graph` — returns the concept graph as nodes + edges for d3 rendering. Nodes: concepts (id, name, type, community_id, degree). Edges: session-concept links or concept-concept co-occurrence (two concepts appearing in the same session). Accepts the global dashboard filter params. Returns `{ nodes: [], edges: [] }` — empty arrays when no Graphify data exists.
+- Node data includes `community_id` (Leiden cluster, for coloring), `degree` (edge count, for sizing), and `session_count` (number of sessions linked to this concept, for tooltip).
+
+**Frontend:**
+- `ConceptGraph.jsx` component using d3.js force-directed layout wrapped in React (`useRef` + `useEffect`).
+- Nodes colored by Leiden community (d3 color scale on `community_id`), sized by degree.
+- Edges between concepts that co-occur in the same session (thicker = more shared sessions).
+- Hover tooltip: concept name, type, community, linked session count.
+- Click a concept node: filters the dashboard to sessions linked to that concept, or navigates to a search with `topic:<concept_name>`.
+- Zoom/pan via d3-zoom.
+- Rendered as one of the dashboard sections (after the charts, before the anomaly table). Only rendered when the API returns non-empty `nodes`.
+
+**Why d3 and not Chart.js:** This is a force-directed network graph — a non-standard visualization. Per stack conventions, Chart.js handles bar/line/doughnut/area charts; d3 handles custom layouts.
+
+**Phase 4 deliverable:** Full dashboard as designed in DESIGN.md §4, plus a Graphify concept graph visualization when concept data is available.
 
 ---
 
@@ -220,9 +224,9 @@ This does not change the ranking formula for users without Graphify data — the
 
 ---
 
-## Phase 6 — Cleanup
+## Phase 6 — Cleanup, Testing & CI
 
-**Goal:** Remove dead code and legacy paths.
+**Goal:** Remove dead code, refactor to OOP, add comprehensive test coverage, set up CI pipeline. This is the final phase — project completion.
 
 ### 6.1 — Remove in-memory index code
 
@@ -246,11 +250,84 @@ This does not change the ranking formula for users without Graphify data — the
 
 After the export + convert step, add a call to `load.py` to sync new data into Postgres. This replaces the file-watch-based reindexing.
 
-### 6.5 — Update CLAUDE.md
+### 6.5 — OOP refactoring
 
-Reflect the new architecture: Postgres as primary storage, no in-memory index, module structure.
+Refactor the backend to proper OOP patterns. Current state is functional — route handlers with inline query logic, helper functions scattered in route files. Target state:
 
-**Phase 6 deliverable:** No legacy code remains. Clean architecture. Single source of truth in Postgres.
+- **Service layer classes** — extract business logic from route handlers into service classes:
+  - `SearchService` — owns query parsing, session-level search, snippet extraction, related sessions. Currently inline in `routes/segments.py`.
+  - `SessionService` — owns session CRUD, hide/restore, project listing, stats aggregation. Currently spread across `routes/projects.py`, `routes/stats.py`, `routes/visibility.py`.
+  - `LoaderService` — owns the data loading pipeline. Currently in `load.py` as module-level functions.
+  - `SummaryService` — owns summary generation pipeline. Currently in `routes/summaries.py`.
+- **Repository pattern** — extract raw SQLAlchemy queries into repository classes (one per model) so service classes don't directly construct SQL. Repositories live in `browser/backend/repositories/`.
+- **Dependency injection** — services instantiated with repositories, injected into routes via FastAPI `Depends()`.
+- **Route handlers become thin** — parse request params, call service, return response. No query logic in routes.
+- **One class per file** — per project conventions.
+
+This is a refactor, not a rewrite. No behavior changes. All endpoints return identical responses. The test suite (6.6) validates this.
+
+### 6.6 — Unit tests
+
+Add `pytest` + `pytest-asyncio` + `pytest-cov` test suite in `browser/backend/tests/`.
+
+**Unit tests (mocked DB):**
+- `test_search.py` — `parse_query()` for every filter prefix, combined filters, malformed values, empty input, edge cases (special characters, very long input).
+- `test_topics.py` — heuristic topic extraction for various session profiles.
+- `test_classify.py` — session type classification for each type (coding, debugging, planning, research, writing, devops).
+- `test_services.py` — service layer methods with mocked repositories (after 6.5 refactor).
+
+**Integration tests (real Postgres via test container):**
+- `test_api_search.py` — `/api/search` with free text, each filter type, combined filters, empty results, provider switching. Verifies response shape matches the session-level contract.
+- `test_api_filters.py` — `/api/search/filters` returns correct distinct values.
+- `test_api_related.py` — `/api/sessions/{id}/related` with and without concept data.
+- `test_api_projects.py` — `/api/projects`, `/api/projects/{name}/segments`, project-level stats.
+- `test_api_segments.py` — `/api/segments/{id}`, `/api/segments/{id}/export`.
+- `test_api_conversations.py` — `/api/projects/{name}/conversation/{id}`.
+- `test_api_visibility.py` — hide/restore for segments, conversations, projects, restore-all.
+- `test_api_stats.py` — `/api/stats` response shape and values.
+- `test_api_dashboard.py` — all `/api/dashboard/*` endpoints (after Phase 4).
+- `test_load.py` — `load_all()` populates tables correctly, idempotent on re-run.
+
+**Test infrastructure:**
+- `conftest.py` — async test fixtures: test database (Postgres test container via `testcontainers-python` or a dedicated `docker-compose.test.yml`), async session factory, test data seeding (small set of known sessions/segments/tool_calls/topics for deterministic assertions).
+- Coverage target: 100% on `search.py`, `topics.py`, `classify.py`, service classes, repositories. `pragma: no cover` only on startup/lifespan glue.
+
+### 6.7 — Frontend tests
+
+Add `vitest` + `@testing-library/react` test suite in `browser/frontend/src/__tests__/`.
+
+- `SearchResults.test.jsx` — renders session cards, highlights query terms, calls onSelectSession on click, shows "No results found" for empty array.
+- `FilterChips.test.jsx` — renders all chips, opens dropdown on click, appends filter on selection, shows active tags, removes filter on X click.
+- `App.test.jsx` — integration: search flow (type query → results render → click result → navigates), provider switch clears state, filter bar toggle.
+- `utils.test.js` — `formatNumber`, `formatTimestamp`, `renderMarkdown`, `highlightHtml`.
+
+**Test infrastructure:**
+- `tests/setup.js` — import `cleanup` from `@testing-library/react`, call in `afterEach` (Vitest does NOT auto-cleanup).
+- Mock `fetch` via `vi.fn()` for API calls.
+
+### 6.8 — GitHub Actions CI
+
+Create `.github/workflows/ci.yml`:
+
+**Pipeline stages (in order):**
+1. **lint** — `ruff check .` for backend (rules: `["E", "F", "I", "N", "UP", "ANN"]`, line-length 120). `pnpm lint` for frontend.
+2. **test-backend** — spin up Postgres service container, run `pytest --cov --cov-report=xml`. Fail on any test failure.
+3. **test-frontend** — `pnpm test -- --coverage`. Fail on any test failure.
+4. **coverage-gate** — fail if backend or frontend coverage drops below threshold (target: 100%, pragmatic starting gate: 90%+ to unblock the first CI run, ratchet up).
+5. **build-frontend** — `pnpm build`. Must compile without errors.
+6. **docker-build** — `docker build` against the Dockerfile. Catches Dockerfile drift.
+
+**Triggers:** push to `main`, pull requests to `main`.
+
+**Secrets:** None needed — no external services in tests. Postgres runs as a GitHub Actions service container.
+
+### 6.9 — Update documentation
+
+- Update CLAUDE.md: reflect final architecture (no in-memory index, OOP service layer, repository pattern, test commands).
+- Update README.md: add testing section, CI badge, architecture diagram reflecting the refactored structure.
+- Update `docs/test_plan.md`: uncomment Phase 6 rows, add CI verification steps.
+
+**Phase 6 deliverable:** No legacy code. OOP architecture with service/repository layers. Full test suite (unit + integration, backend + frontend). GitHub Actions CI pipeline enforcing lint, tests, coverage, build, and Docker build on every push. Project complete.
 
 ---
 
@@ -261,9 +338,9 @@ Reflect the new architecture: Postgres as primary storage, no in-memory index, m
 | 0 — Scaffolding | ✅ Done | Postgres running, SQLAlchemy models, Pydantic schemas, backend split into modules | Nothing | None |
 | 1 — Data Loader | ✅ Done | Postgres populated, topics + types extracted, optional Graphify concept import | Nothing | None |
 | 2 — Migrate Reads | ✅ Done | All API reads from Postgres via SQLAlchemy. Search upgraded to tsvector ranking. Hidden state in DB. | Nothing (same JSON shapes) | None |
-| 3 — Search Upgrade | Not started | Ranked + filtered + session-level search, optional "Related sessions" via concept graph | Search results shape changes | Search UI updated |
-| 4 — Dashboard | Not started | New dashboard view | Nothing | New Dashboard component |
+| 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
+| 4 — Dashboard | Not started | Dashboard view with Chart.js charts + d3 concept graph visualization | Nothing | Dashboard component, ConceptGraph component, Chart.js + d3 deps |
 | 5 — Semantic Search | Not started | Vector embeddings + hybrid retrieval, optional community-based re-ranking | Nothing | Minor search UI polish |
-| 6 — Cleanup | Not started | Dead code removed (index_store.py, state.py, in-memory globals) | Nothing | None |
+| 6 — Cleanup, Testing & CI | Not started | Dead code removed, OOP refactoring (service/repository layers), full test suite (pytest + vitest), GitHub Actions CI pipeline | Nothing | None (internal quality) |
 
-Every phase produces a working system. Phases 0–2 are invisible to the frontend. Phase 3 is the first user-visible improvement. Phase 4 is the second. Phase 5 is the third.
+Every phase produces a working system. Phases 0–2 are invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**

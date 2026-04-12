@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ProjectList from "./components/ProjectList";
 import RequestList from "./components/RequestList";
+import SearchResults from "./components/SearchResults";
+import FilterChips from "./components/FilterChips";
 import ContentViewer from "./components/ContentViewer";
 import MetadataPanel from "./components/MetadataPanel";
 import {
@@ -15,7 +17,8 @@ import {
   fetchSegments,
   fetchSegmentDetail,
   fetchConversation,
-  searchSegments,
+  searchSessions,
+  fetchSearchFilters,
   fetchStats,
   triggerUpdate,
   hideSegment,
@@ -46,6 +49,8 @@ export default function App() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
+  const [filterOptions, setFilterOptions] = useState(null);
   const searchRef = useRef(null);
   const searchTimerRef = useRef(null);
 
@@ -103,6 +108,7 @@ export default function App() {
     setConvViewData(null);
     setRequestsHeader("Requests");
     setSearchQuery("");
+    setSearchResults(null);
   }, []);
 
   // Load data when provider or showHidden changes
@@ -117,6 +123,7 @@ export default function App() {
     }).catch(console.error);
     fetchStats(provider).then(setStats).catch(console.error);
     fetchSummaryTitles().then(setSummaryTitles).catch(console.error);
+    fetchSearchFilters(provider).then(setFilterOptions).catch(console.error);
   }, [loadProjects, provider]);
 
   useEffect(() => {
@@ -181,6 +188,22 @@ export default function App() {
     } catch (err) { console.error(err); }
   }, [selectedProject, provider]);
 
+  const handleSelectSearchResult = useCallback(async (result) => {
+    // Navigate to the conversation from a search result
+    const project = result.project;
+    const conversationId = result.conversation_id;
+    if (!project || !conversationId) return;
+    setSelectedProject(project);
+    try {
+      const segs = await (showHidden ? fetchSegmentsWithHidden : fetchSegments)(project, provider);
+      setSegments(segs);
+      setConvViewData(await fetchConversation(project, conversationId, provider));
+      setSelectedSegmentId(null);
+      setSegmentDetail(null);
+      setRequestsHeader(`Requests \u2014 ${project}`);
+    } catch (err) { console.error(err); }
+  }, [showHidden, provider]);
+
   const handleTitleReady = useCallback((key, title) => {
     setSummaryTitles((prev) => ({ ...prev, [key]: title }));
   }, []);
@@ -244,6 +267,7 @@ export default function App() {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (searchQuery.length < 2) {
       setIsSearching(false);
+      setSearchResults(null);
       if (selectedProject && searchQuery.length === 0) {
         loadSegments(selectedProject).then((segs) => {
           setSegments(segs); setRequestsHeader(`Requests \u2014 ${selectedProject}`);
@@ -254,7 +278,10 @@ export default function App() {
     setIsSearching(true);
     searchTimerRef.current = setTimeout(async () => {
       setRequestsHeader(`Search: "${searchQuery}"`);
-      try { setSegments(await searchSegments(searchQuery, provider)); } catch (err) { console.error(err); }
+      try {
+        const results = await searchSessions(searchQuery, provider);
+        setSearchResults(results);
+      } catch (err) { console.error(err); }
       setIsSearching(false);
     }, 300);
   }, [searchQuery, selectedProject, loadSegments]);
@@ -309,7 +336,8 @@ export default function App() {
   })();
 
   const hiddenTotal = stats?.hidden ? stats.hidden.segments + stats.hidden.conversations + stats.hidden.projects : 0;
-  const showProject = searchQuery.length >= 2;
+  const isInSearchMode = searchQuery.length >= 2;
+  const showProject = isInSearchMode;
   const viewingMarkdown = convViewData?.raw_markdown || segmentDetail?.raw_markdown || null;
   const viewingSource = segmentDetail?.source_file || null;
 
@@ -356,17 +384,20 @@ export default function App() {
       </div>
 
       <div className="search-bar">
-        <input ref={searchRef} type="text" placeholder="Search across all conversations... (Cmd+K)" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-        <button className="toolbar-btn filter-toggle" onClick={() => setShowDateFilter(!showDateFilter)} title="Toggle date filter">
-          {showDateFilter ? "Hide Dates" : "Dates"}
+        <input ref={searchRef} type="text" placeholder="Search conversations... (Cmd+K) — try project:name tool:Bash after:2026-01-01" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        <button className="toolbar-btn filter-toggle" onClick={() => setShowDateFilter(!showDateFilter)} title="Toggle filters">
+          {showDateFilter ? "Hide Filters" : "Filters"}
         </button>
       </div>
       {showDateFilter && (
-        <div className="date-filter-bar">
-          <label>From:<input type="date" value={pendingDateFrom} onChange={(e) => setPendingDateFrom(e.target.value)} /></label>
-          <label>To:<input type="date" value={pendingDateTo} onChange={(e) => setPendingDateTo(e.target.value)} /></label>
-          <button className="toolbar-btn" onClick={() => { setDateFrom(pendingDateFrom); setDateTo(pendingDateTo); }}>Apply</button>
-          {(dateFrom || dateTo) && <button className="toolbar-btn" onClick={() => { setDateFrom(""); setDateTo(""); setPendingDateFrom(""); setPendingDateTo(""); }}>Clear</button>}
+        <div className="filter-bar-expanded">
+          <FilterChips filterOptions={filterOptions} searchQuery={searchQuery} onQueryChange={setSearchQuery} />
+          <div className="date-filter-bar">
+            <label>From:<input type="date" value={pendingDateFrom} onChange={(e) => setPendingDateFrom(e.target.value)} /></label>
+            <label>To:<input type="date" value={pendingDateTo} onChange={(e) => setPendingDateTo(e.target.value)} /></label>
+            <button className="toolbar-btn" onClick={() => { setDateFrom(pendingDateFrom); setDateTo(pendingDateTo); }}>Apply</button>
+            {(dateFrom || dateTo) && <button className="toolbar-btn" onClick={() => { setDateFrom(""); setDateTo(""); setPendingDateFrom(""); setPendingDateTo(""); }}>Clear</button>}
+          </div>
         </div>
       )}
 
@@ -381,11 +412,12 @@ export default function App() {
 
         <div className="resize-handle" onMouseDown={() => { dragging.current = "projects"; }} />
 
-        {/* Pane 2: Requests */}
+        {/* Pane 2: Requests / Search Results */}
         <div className="pane pane-requests" style={{ width: requestsWidth }}>
           <div className="pane-header">{requestsHeader}</div>
           <div className="pane-content">
             {isSearching ? <div className="loading">Searching...</div>
+              : isInSearchMode && searchResults ? <SearchResults results={searchResults} onSelectSession={handleSelectSearchResult} searchQuery={searchQuery} />
               : segments.length > 0 ? <RequestList segments={segments} selectedId={selectedSegmentId} onSelect={handleSelectSegment} onViewConversation={selectedProject ? handleViewConversation : null} onHideSegment={handleHideSegment} onRestoreSegment={handleRestoreSegment} onHideConversation={handleHideConversation} onRestoreConversation={handleRestoreConversation} showProject={showProject} showHidden={showHidden} dateFrom={dateFrom} dateTo={dateTo} summaryTitles={summaryTitles} projectName={selectedProject} />
               : selectedProject ? <div className="empty-state">No requests found</div>
               : <div className="empty-state">Select a project</div>}
