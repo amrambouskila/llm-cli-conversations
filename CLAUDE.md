@@ -68,21 +68,23 @@ Raw JSONL (Claude/Codex CLI)
 
 ## Current State
 
-The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 3 of the v2 migration are complete:
+The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 5 of the v2 migration are complete:
 
 - **Phase 0 (done):** PostgreSQL 16 with pgvector running in Docker Compose. Backend split into modular routes. SQLAlchemy 2.0 async models define the `conversations` schema (7 tables). Pydantic v2 schemas ready for API layer. Database initialized on app startup via `init_db()`.
 - **Phase 1 (done):** Data loader pipeline (`load.py`) populates Postgres from parsed markdown + raw JSONL metadata. Heuristic topic extraction and session type classification. Graphify concept graph import (via `graphifyy` package). Wired into `/api/update`, watch loop, and app startup.
 - **Phase 2 (done):** All API endpoints read from Postgres via SQLAlchemy async queries. Search upgraded from substring to tsvector full-text ranking. Hidden state stored in Postgres `hidden_at` columns. In-memory index retained only for the export pipeline.
 - **Phase 3 (done):** Search returns session-level results with metadata filter parsing (`project:`, `model:`, `tool:`, `topic:`, `after:`, `before:`, `cost:>`, `turns:>`). Frontend renders session cards with snippet highlighting, filter chips with autocomplete dropdowns, and click-to-navigate. Related sessions endpoint via Graphify concept graph (graceful when no data). New files: `search.py`, `SearchResults.jsx`, `FilterChips.jsx`.
+- **Phase 4 (done):** KPI dashboard with 6 chart types (Chart.js), activity heatmap (custom SVG), anomaly table, global filters with click-to-filter. Knowledge graph in its own full-screen tab (d3 force-directed layout with interactive settings panel, `localStorage` persistence). Automated concept extraction pipeline (`graph_extract.py` via `claude -p --system-prompt` + graphifyy clustering) auto-starts on service launch. New files: `routes/dashboard.py`, `Dashboard.jsx`, `Heatmap.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `graph_extract.py`, `graph_watcher.bat`.
+- **Phase 5 (done):** Hybrid semantic + keyword search. `embed.py` loads `sentence-transformers/all-MiniLM-L6-v2` via ONNX Runtime (downloaded on first run, ~90MB, cached). `load.py` incrementally embeds sessions where `embedding IS NULL`. `api_search` runs tsvector + vector legs, merges via Reciprocal Rank Fusion (k=60, normalized to [0,1]), then applies `0.6*rrf + 0.2*recency + 0.1*length + 0.1*exact_match` scoring. Optional community re-ranking boosts sessions sharing Leiden communities with the top result (`+0.05 * overlap_count`). Relevance bar per result card, two-part status badges (Hybrid/Keyword + Graph/No Graph) in the search bar, `/api/search/status` endpoint for polling. Timestamped launcher logs. New files: `browser/backend/embed.py`. New dependencies: `onnxruntime`, `tokenizers`, `huggingface-hub`, `numpy` + `libgomp1` system package in Dockerfile.
 
-### Next: v2 Upgrades (Phase 4+)
+### Next: v2 Upgrades (Phase 6)
 
 - @DESIGN.md — product direction, schema, dashboard spec, anti-bloat guardrails
-- @PLAN.md — phased migration plan (7 phases, each produces a working system)
+- @docs/CONVERSATIONS_MASTER_PLAN.md — **single source of truth** for product direction, architectural decisions, phased migration (Phases 0-6), phase summary table, anti-bloat guardrails, and the full QA/UAT test plan. Supersedes the old `PLAN.md` and `docs/test_plan.md`.
 
-**When working on v2:** Follow PLAN.md phases in order (0 → 1 → 2 → 3 → 4 → 5 → 6). Do not skip ahead — each phase depends on the previous one. Check which phase is current before starting work. Each phase must produce a working system before moving to the next.
+**When working on v2:** Follow the master plan's phases in order (0 → 1 → 2 → 3 → 4 → 5 → 6). Do not skip ahead — each phase depends on the previous one. Check which phase is current (see the "Current phase" line at the top of the master plan) before starting work. Each phase must produce a working system before moving to the next.
 
-### v1 Targets
+### v1 Targets (all complete)
 
 - [x] PostgreSQL service in docker-compose (pgvector + pg_trgm extensions)
 - [x] Schema: sessions, segments, tool_calls, session_topics tables with tsvector columns
@@ -91,14 +93,15 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 - [x] Metadata filter parsing in search bar
 - [x] Session-level search results with ranked snippets
 - [x] Heuristic topic extraction and session type classification
-- [ ] Dashboard view with cost-over-time, project breakdown, tool usage, summary cards
-- [ ] Graphify concept graph visualization (d3 force-directed, Phase 4)
+- [x] Dashboard view with cost-over-time, project breakdown, tool usage, summary cards
+- [x] Graphify concept graph visualization (d3 force-directed, Phase 4)
 
-### v1.5 Targets
+### v1.5 Targets (all complete)
 
-- [ ] Semantic search via `all-MiniLM-L6-v2` + `pgvector`
-- [ ] Hybrid retrieval with Reciprocal Rank Fusion
-- [ ] Dashboard: model comparison, session type distribution, activity heatmap
+- [x] Semantic search via `all-MiniLM-L6-v2` + `pgvector`
+- [x] Hybrid retrieval with Reciprocal Rank Fusion
+- [x] Community-based re-ranking via Graphify Leiden communities
+- [x] Dashboard: model comparison, session type distribution, activity heatmap
 
 ### v2 Targets (Project Completion)
 
@@ -143,3 +146,12 @@ cd browser/frontend && npm run build
 - Do not index tool output content (Bash stdout, file contents) — only index user/assistant messages
 - Do not add per-turn cost attribution — session-level estimates are sufficient
 - Every feature must justify itself as: faster recall OR faster pattern understanding
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current

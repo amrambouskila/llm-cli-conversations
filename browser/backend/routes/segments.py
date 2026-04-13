@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -8,7 +10,7 @@ from sqlalchemy import distinct, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
-from models import Segment, Session, SessionConcept, SessionTopic, ToolCall
+from models import Concept, Segment, Session, SessionConcept, SessionTopic, ToolCall
 from search import parse_query
 
 router = APIRouter()
@@ -87,6 +89,126 @@ async def api_segment_detail(segment_id: str, provider: str = "claude", db: Asyn
     return _segment_to_dict(seg, session, tool_bd)
 
 
+# ---------------------------------------------------------------------------
+# Hybrid retrieval helpers (Phase 5.2 — DESIGN.md §3)
+# ---------------------------------------------------------------------------
+
+
+def _rrf_merge(
+    keyword_results: list[tuple[str, float]],
+    vector_results: list[tuple[str, float]],
+    k: int = 60,
+) -> dict[str, float]:
+    """Reciprocal Rank Fusion: merge two ranked result lists.
+
+    Each leg contributes 1/(k + rank) per result. Scores are then
+    normalized to [0, 1] so the final scoring formula weights work correctly.
+    """
+    scores: dict[str, float] = {}
+    for rank, (sid, _) in enumerate(keyword_results, 1):
+        scores[sid] = scores.get(sid, 0) + 1 / (k + rank)
+    for rank, (sid, _) in enumerate(vector_results, 1):
+        scores[sid] = scores.get(sid, 0) + 1 / (k + rank)
+
+    # Normalize to [0, 1]
+    max_score = max(scores.values()) if scores else 1.0
+    if max_score > 0:
+        scores = {sid: s / max_score for sid, s in scores.items()}
+
+    return scores
+
+
+def _recency_boost(started_at: Optional[datetime], now: datetime) -> float:
+    """Gentle log-decay: 1 / (1 + log(1 + days_ago / 30))."""
+    if not started_at:
+        return 0.0
+    days_ago = max(0.0, (now - started_at).total_seconds() / 86400)
+    return 1.0 / (1.0 + math.log(1.0 + days_ago / 30.0))
+
+
+def _length_signal(total_words: Optional[int]) -> float:
+    """Longer sessions slightly preferred. Log-scaled, normalized to [0, 1]."""
+    if not total_words or total_words <= 0:
+        return 0.0
+    return min(1.0, math.log(1 + total_words) / math.log(10001))
+
+
+def _exact_match_bonus(summary_text: Optional[str], query: str) -> float:
+    """Fraction of query terms that appear verbatim in the session summary."""
+    if not summary_text or not query:
+        return 0.0
+    summary_lower = summary_text.lower()
+    terms = query.lower().split()
+    if not terms:
+        return 0.0
+    matches = sum(1 for t in terms if t in summary_lower)
+    return matches / len(terms)
+
+
+# Additive boost per shared community with a top-ranked result
+# (master plan §10 Phase 5.4). Conservative default — tunable without code changes.
+COMMUNITY_BOOST_COEFFICIENT = 0.05
+
+
+async def _community_rerank(
+    db: AsyncSession,
+    scored: dict[str, float],
+) -> dict[str, float]:
+    """Compute community-based re-ranking boosts.
+
+    After RRF + base scoring produces a candidate list, sessions that share
+    Leiden community membership with the top-ranked result get a small
+    additive boost. Returns a dict of session_id -> boost (0.0 for most).
+
+    Falls back to empty dict when no community data exists.
+    """
+    if not scored:
+        return {}
+
+    candidate_ids = list(scored.keys())
+
+    # Fetch community memberships for all candidates in one query:
+    # session_concepts -> concepts.community_id
+    comm_result = await db.execute(
+        select(
+            SessionConcept.session_id,
+            Concept.community_id,
+        )
+        .join(Concept, SessionConcept.concept_id == Concept.id)
+        .where(
+            SessionConcept.session_id.in_(candidate_ids),
+            Concept.community_id.is_not(None),
+        )
+    )
+    rows = comm_result.all()
+
+    if not rows:
+        return {}
+
+    # Build session -> set of community IDs
+    communities_by_session: dict[str, set[int]] = {}
+    for sid, cid in rows:
+        communities_by_session.setdefault(sid, set()).add(cid)
+
+    # Identify the top-ranked session's communities
+    top_sid = max(scored, key=scored.get)
+    top_communities = communities_by_session.get(top_sid, set())
+
+    if not top_communities:
+        return {}
+
+    # Boost other sessions that share communities with the top result
+    boosts: dict[str, float] = {}
+    for sid, communities in communities_by_session.items():
+        if sid == top_sid:
+            continue
+        overlap = len(communities & top_communities)
+        if overlap > 0:
+            boosts[sid] = COMMUNITY_BOOST_COEFFICIENT * overlap
+
+    return boosts
+
+
 @router.get("/api/search")
 async def api_search(
     q: Optional[str] = Query(None),
@@ -94,21 +216,68 @@ async def api_search(
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
 ):
-    """Search and return session-level results with the best-matching snippet per session."""
+    """Hybrid semantic + keyword search returning session-level results.
+
+    When free text is present, runs two retrieval legs:
+    1. Keyword: tsvector full-text search over segments (top 50)
+    2. Semantic: cosine similarity over session embeddings (top 50)
+    Then merges via Reciprocal Rank Fusion and re-ranks with recency,
+    length, and exact-match signals per DESIGN.md section 3.
+    """
     if not q or len(q.strip()) < 2:
         return []
 
     parsed = parse_query(q)
     query_text = parsed.text
     f = parsed.filters
-
-    # If no free text remains after filter extraction, search session summary instead
     has_text = len(query_text.strip()) >= 2
 
+    # --- Common metadata filter conditions ---
+    effective_provider = f.provider or provider
+    session_conditions = [Session.provider == effective_provider]
+    if not show_hidden:
+        session_conditions.append(Session.hidden_at.is_(None))
+    if f.project:
+        session_conditions.append(Session.project == f.project)
+    if f.model:
+        session_conditions.append(Session.model.ilike(f"%%{f.model}%%"))
+    if f.after:
+        session_conditions.append(Session.started_at >= f.after.isoformat())
+    if f.before:
+        session_conditions.append(Session.started_at <= f.before.isoformat() + "T23:59:59")
+    if f.min_cost is not None:
+        session_conditions.append(Session.estimated_cost >= f.min_cost)
+    if f.min_turns is not None:
+        session_conditions.append(Session.turn_count >= f.min_turns)
+
+    tool_subq = None
+    if f.tools:
+        tool_subq = (
+            select(ToolCall.session_id)
+            .where(ToolCall.tool_name.in_(f.tools))
+            .group_by(ToolCall.session_id)
+        )
+    topic_subq = None
+    if f.topic:
+        topic_subq = (
+            select(SessionTopic.session_id)
+            .where(SessionTopic.topic.ilike(f"%%{f.topic}%%"))
+        )
+
+    def _apply_filters(stmt, include_tool_topic: bool = True):
+        for cond in session_conditions:
+            stmt = stmt.where(cond)
+        if include_tool_topic:
+            if tool_subq is not None:
+                stmt = stmt.where(Session.id.in_(tool_subq))
+            if topic_subq is not None:
+                stmt = stmt.where(Session.id.in_(topic_subq))
+        return stmt
+
     if has_text:
+        # === Keyword leg: tsvector search over segments, grouped by session ===
         ts_query = func.plainto_tsquery("english", query_text)
-        # Search segments, rank by ts_rank, group by session
-        stmt = (
+        kw_stmt = (
             select(
                 Session.id.label("session_id"),
                 func.max(func.ts_rank(Segment.search_vector, ts_query)).label("best_rank"),
@@ -117,8 +286,86 @@ async def api_search(
             .join(Session, Segment.session_id == Session.id)
             .where(Segment.search_vector.op("@@")(ts_query))
         )
+        kw_stmt = _apply_filters(kw_stmt)
+        if not show_hidden:
+            kw_stmt = kw_stmt.where(Segment.hidden_at.is_(None))
+        kw_stmt = kw_stmt.group_by(Session.id).order_by(text("best_rank DESC")).limit(50)
+
+        kw_result = await db.execute(kw_stmt)
+        keyword_ranked = [(r.session_id, float(r.best_rank)) for r in kw_result.all()]
+
+        # === Vector leg: cosine similarity over session embeddings ===
+        vector_ranked: list[tuple[str, float]] = []
+        try:
+            from embed import embed_text
+            query_vector = embed_text(query_text)
+
+            vec_stmt = (
+                select(
+                    Session.id.label("session_id"),
+                    (1 - Session.embedding.cosine_distance(query_vector)).label("similarity"),
+                )
+                .where(Session.embedding.is_not(None))
+            )
+            vec_stmt = _apply_filters(vec_stmt)
+            vec_stmt = vec_stmt.order_by(
+                Session.embedding.cosine_distance(query_vector)
+            ).limit(50)
+
+            vec_result = await db.execute(vec_stmt)
+            vector_ranked = [(r.session_id, float(r.similarity)) for r in vec_result.all()]
+        except Exception:
+            pass
+
+        # === RRF fusion ===
+        if vector_ranked:
+            rrf_scores = _rrf_merge(keyword_ranked, vector_ranked)
+        else:
+            # Keyword-only fallback: still normalize to [0, 1]
+            raw = {}
+            for rank, (sid, _) in enumerate(keyword_ranked, 1):
+                raw[sid] = 1 / (60 + rank)
+            max_s = max(raw.values()) if raw else 1.0
+            rrf_scores = {sid: s / max_s for sid, s in raw.items()} if max_s > 0 else raw
+
+        if not rrf_scores:
+            return []
+
+        # Fetch session data for all candidates to compute final scores
+        candidate_ids = list(rrf_scores.keys())
+        sess_result = await db.execute(
+            select(Session).where(Session.id.in_(candidate_ids))
+        )
+        sessions_by_id = {s.id: s for s in sess_result.scalars().all()}
+
+        # === Final scoring: DESIGN.md §3 ranking formula ===
+        now = datetime.now(timezone.utc)
+        scored: dict[str, float] = {}
+        for sid, rrf in rrf_scores.items():
+            session = sessions_by_id.get(sid)
+            if not session:
+                continue
+            scored[sid] = (
+                0.6 * rrf
+                + 0.2 * _recency_boost(session.started_at, now)
+                + 0.1 * _length_signal(session.total_words)
+                + 0.1 * _exact_match_bonus(session.summary_text, query_text)
+            )
+
+        # === Community-based re-ranking (master plan §10 Phase 5.4) ===
+        # Only active when concepts table has community data.
+        if scored:
+            community_boost = await _community_rerank(db, scored)
+            for sid, boost in community_boost.items():
+                if sid in scored:
+                    scored[sid] += boost
+
+        ranked = sorted(scored.items(), key=lambda x: -x[1])
+        session_ids = [sid for sid, _ in ranked[:20]]
+        rank_map = {sid: sc for sid, sc in ranked[:20]}
+
     else:
-        # No free text — return sessions matching filters only, ordered by recency
+        # --- Filter-only mode: no text, return sessions by recency ---
         stmt = (
             select(
                 Session.id.label("session_id"),
@@ -126,67 +373,25 @@ async def api_search(
             )
             .select_from(Session)
         )
+        stmt = _apply_filters(stmt)
+        stmt = stmt.order_by(Session.started_at.desc()).limit(50)
 
-    # Provider filter (always applied)
-    effective_provider = f.provider or provider
-    stmt = stmt.where(Session.provider == effective_provider)
+        session_ranks = await db.execute(stmt)
+        ranked_sessions = session_ranks.all()
+        if not ranked_sessions:
+            return []
 
-    if not show_hidden:
-        stmt = stmt.where(Session.hidden_at.is_(None))
-        if has_text:
-            stmt = stmt.where(Segment.hidden_at.is_(None))
+        session_ids = [r.session_id for r in ranked_sessions]
+        rank_map = {r.session_id: float(r.best_rank) for r in ranked_sessions}
 
-    # Apply metadata filters
-    if f.project:
-        stmt = stmt.where(Session.project == f.project)
-    if f.model:
-        stmt = stmt.where(Session.model.ilike(f"%%{f.model}%%"))
-    if f.after:
-        stmt = stmt.where(Session.started_at >= f.after.isoformat())
-    if f.before:
-        stmt = stmt.where(Session.started_at <= f.before.isoformat() + "T23:59:59")
-    if f.min_cost is not None:
-        stmt = stmt.where(Session.estimated_cost >= f.min_cost)
-    if f.min_turns is not None:
-        stmt = stmt.where(Session.turn_count >= f.min_turns)
-    if f.tools:
-        # Session must have at least one of the specified tools
-        stmt = stmt.where(
-            Session.id.in_(
-                select(ToolCall.session_id)
-                .where(ToolCall.tool_name.in_(f.tools))
-                .group_by(ToolCall.session_id)
-            )
+        sess_result = await db.execute(
+            select(Session).where(Session.id.in_(session_ids))
         )
-    if f.topic:
-        stmt = stmt.where(
-            Session.id.in_(
-                select(SessionTopic.session_id)
-                .where(SessionTopic.topic.ilike(f"%%{f.topic}%%"))
-            )
-        )
+        sessions_by_id = {s.id: s for s in sess_result.scalars().all()}
 
-    if has_text:
-        stmt = stmt.group_by(Session.id)
-
-    stmt = stmt.order_by(text("best_rank DESC")).limit(50)
-
-    session_ranks = await db.execute(stmt)
-    ranked_sessions = session_ranks.all()
-
-    if not ranked_sessions:
-        return []
-
-    session_ids = [r.session_id for r in ranked_sessions]
-    rank_map = {r.session_id: float(r.best_rank) for r in ranked_sessions}
-
-    # Fetch full session data
-    sess_result = await db.execute(
-        select(Session).where(Session.id.in_(session_ids))
-    )
-    sessions_by_id = {s.id: s for s in sess_result.scalars().all()}
-
-    # For each session, get the best-matching segment as snippet
+    # For each session, get the best-matching segment as snippet.
+    # tsvector matches get ranked snippets; vector-only results fall back
+    # to a simple text scan for query-term context.
     snippets: dict[str, str] = {}
     if has_text:
         ts_query = func.plainto_tsquery("english", query_text)
@@ -205,11 +410,25 @@ async def api_search(
         )
         for row in snip_result.all():
             if row.session_id not in snippets:
-                # Extract a snippet: first ~200 chars of the matching segment's text
                 raw = row.raw_text or row.preview or ""
-                # Try to find the query terms in the text for context
                 snippet = _extract_snippet(raw, query_text)
                 snippets[row.session_id] = snippet
+
+        # For sessions found by vector search but not tsvector, scan their
+        # segments for query terms to build a contextual snippet
+        missing_snippet_ids = [sid for sid in session_ids if sid not in snippets]
+        if missing_snippet_ids:
+            fallback_result = await db.execute(
+                select(Segment.session_id, Segment.preview, Segment.raw_text)
+                .where(Segment.session_id.in_(missing_snippet_ids))
+                .order_by(Segment.session_id, Segment.segment_index)
+            )
+            for row in fallback_result.all():
+                if row.session_id not in snippets:
+                    raw = row.raw_text or row.preview or ""
+                    snippet = _extract_snippet(raw, query_text)
+                    if snippet and snippet != raw[:250]:
+                        snippets[row.session_id] = snippet
 
     # Get tool summaries per session
     tool_result = await db.execute(
@@ -298,6 +517,57 @@ def _extract_snippet(raw_text: str, query: str, max_len: int = 250) -> str:
     # Strip markdown noise
     snippet = snippet.replace(">>>USER_REQUEST<<<", "").replace("---", "").strip()
     return snippet
+
+
+# ---------------------------------------------------------------------------
+# Search status — tells the frontend which search mode is active
+# ---------------------------------------------------------------------------
+
+@router.get("/api/search/status")
+async def api_search_status(
+    provider: str = "claude",
+    db: AsyncSession = Depends(get_db),
+):
+    """Report embedding + graph coverage so the frontend can show search mode."""
+    total = await db.execute(
+        select(func.count(Session.id)).where(
+            Session.provider == provider,
+            Session.hidden_at.is_(None),
+        )
+    )
+    embedded = await db.execute(
+        select(func.count(Session.id)).where(
+            Session.provider == provider,
+            Session.hidden_at.is_(None),
+            Session.embedding.is_not(None),
+        )
+    )
+    total_count = total.scalar_one()
+    embedded_count = embedded.scalar_one()
+
+    # Check if knowledge graph community data exists
+    concept_count_result = await db.execute(
+        select(func.count(Concept.id)).where(Concept.community_id.is_not(None))
+    )
+    concept_count = concept_count_result.scalar_one()
+    has_graph = concept_count > 0
+
+    if total_count == 0:
+        mode = "unavailable"
+    elif embedded_count == 0:
+        mode = "keyword"
+    elif embedded_count < total_count:
+        mode = "embedding"
+    else:
+        mode = "hybrid"
+
+    return {
+        "mode": mode,
+        "total_sessions": total_count,
+        "embedded_sessions": embedded_count,
+        "has_graph": has_graph,
+        "concept_count": concept_count,
+    }
 
 
 # ---------------------------------------------------------------------------

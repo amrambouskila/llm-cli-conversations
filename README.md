@@ -254,9 +254,9 @@ The content viewer pane is split vertically: **top half** shows the raw markdown
 - Saves the output and cleans up the request files
 - Gets killed automatically when you press k/q/v/r to stop the service
 
-**Model:** Defaults to `claude-haiku-4-5-20251001` for speed/cost. Override with `SUMMARY_MODEL` env var:
+**Model:** Defaults to `claude-sonnet-4-6` for quality. Override with `SUMMARY_MODEL` env var:
 ```bash
-SUMMARY_MODEL=claude-sonnet-4-6-20250514 ./export_service.sh
+SUMMARY_MODEL=claude-opus-4-6 ./export_service.sh
 ```
 
 **If `claude` CLI is not installed:** The watcher won't start and you'll see a note in the terminal. The rest of the app works normally — summaries just show "unavailable."

@@ -39,6 +39,8 @@ services:
       - ./markdown_codex:/data/markdown_codex
       # Browser state (hidden items, persists across restarts)
       - ./browser_state:/data/state
+      # Graphify concept graph output (generated externally via /graphify skill)
+      - ./graphify-out:/data/graphify-out
     environment:
       - MARKDOWN_DIR=/data/markdown
       - RAW_DIR=/data/raw
@@ -47,6 +49,7 @@ services:
       - CODEX_MARKDOWN_DIR=/data/markdown_codex
       - STATE_DIR=/data/state
       - STATIC_DIR=/app/static
+      - GRAPHIFY_OUT=/data/graphify-out
       - DATABASE_URL=postgresql+asyncpg://conversations:conversations@postgres:5432/conversations
     depends_on:
       postgres:

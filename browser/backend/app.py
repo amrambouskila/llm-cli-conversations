@@ -15,7 +15,13 @@ import subprocess
 import sys
 import traceback
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +32,7 @@ from index_store import (
     INDEX, CODEX_INDEX, INDEXES,
     init_indexes, rebuild_index, get_index,
 )
-from routes import projects, segments, conversations, stats, summaries, visibility
+from routes import projects, segments, conversations, stats, summaries, visibility, dashboard
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -75,13 +81,11 @@ _last_codex_mtime: float = 0.0
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-@asynccontextmanager
-async def lifespan(app):
-    from db import init_db
-    await init_db()
-    print("Database schema initialized (conversations.*)")
+startup_ready = False
 
-    # Load data into Postgres on startup
+
+async def _startup_load():
+    global startup_ready
     try:
         from load import load_all
         raw_projects = str(Path(RAW_DIR) / "projects")
@@ -91,13 +95,25 @@ async def lifespan(app):
             raw_projects,
             CODEX_SESSIONS_SRC,
         )
-        print(f"Startup Postgres load: {results}")
+        _log(f"Startup Postgres load: {results}")
     except Exception as e:
-        print(f"Startup Postgres load failed (non-fatal): {e}")
+        _log(f"Startup Postgres load failed (non-fatal): {e}")
+    startup_ready = True
+    _log("Backend ready — serving data")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    from db import init_db
+    await init_db()
+    _log("Database schema initialized (conversations.*)")
+
+    # Load data in background so the app serves requests immediately
+    asyncio.create_task(_startup_load())
 
     if WATCH_INTERVAL > 0:
         asyncio.create_task(_watch_loop())
-        print(f"Watch mode enabled: checking for changes every {WATCH_INTERVAL}s")
+        _log(f"Watch mode enabled: checking for changes every {WATCH_INTERVAL}s")
     yield
 
 app = FastAPI(title="LLM Conversation Browser", version="1.0.0", lifespan=lifespan)
@@ -116,6 +132,7 @@ app.include_router(conversations.router)
 app.include_router(stats.router)
 app.include_router(summaries.router)
 app.include_router(visibility.router)
+app.include_router(dashboard.router)
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +290,7 @@ async def _watch_loop():
             changed = True
         if changed:
             from index_store import INDEX as ci, CODEX_INDEX as cxi
-            print(f"[watch] Re-indexed: Claude {len(ci['projects'])}p/{len(ci['segments'])}s, Codex {len(cxi['projects'])}p/{len(cxi['segments'])}s")
+            _log(f"[watch] Re-indexed: Claude {len(ci['projects'])}p/{len(ci['segments'])}s, Codex {len(cxi['projects'])}p/{len(cxi['segments'])}s")
             try:
                 from load import load_all
                 await load_all(
@@ -282,14 +299,19 @@ async def _watch_loop():
                     str(Path(RAW_DIR) / "projects"),
                     CODEX_SESSIONS_SRC,
                 )
-                print("[watch] Postgres synced")
+                _log("[watch] Postgres synced")
             except Exception as e:
-                print(f"[watch] Postgres sync failed (non-fatal): {e}")
+                _log(f"[watch] Postgres sync failed (non-fatal): {e}")
 
 
 # ---------------------------------------------------------------------------
 # API routes that stay in app.py
 # ---------------------------------------------------------------------------
+@app.get("/api/ready")
+async def api_ready():
+    return {"ready": startup_ready}
+
+
 @app.post("/api/update")
 async def api_update():
     """Run the full export pipeline: sync, convert, re-index."""

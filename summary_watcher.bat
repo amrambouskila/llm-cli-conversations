@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-haiku-4-5-20251001"
+if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-sonnet-4-6"
 set "SUMMARY_DIR=%~dp0browser_state\summaries"
 set "PID_FILE=%~dp0browser_state\summary_watcher.pid"
 
@@ -21,7 +21,7 @@ for %%F in ("%SUMMARY_DIR%\*.pending") do (
             REM Safety net only: backend hierarchical summarization keeps
             REM individual jobs around 80K chars. Anything larger than 400K
             REM (~100K tokens) gets head/tail truncated so it still fits in
-            REM the haiku context window.
+            REM the sonnet context window.
             for %%S in ("!INPUT!") do set "FSIZE=%%~zS"
             set "TRUNCATED=%TEMP%\claude_summary_input.tmp"
 

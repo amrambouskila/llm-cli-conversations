@@ -8,13 +8,16 @@ SERVICE_PREFIX="llm-cli-conversation-export"
 COMPOSE_FILE="docker-compose.yml"
 PORT="${PORT:-5050}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-SUMMARY_MODEL="${SUMMARY_MODEL:-claude-haiku-4-5-20251001}"
+SUMMARY_MODEL="${SUMMARY_MODEL:-claude-sonnet-4-6}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 SUMMARY_DIR="$SCRIPT_DIR/browser_state/summaries"
+GRAPHIFY_OUT="$SCRIPT_DIR/graphify-out"
+GRAPHIFY_MODEL="${GRAPHIFY_MODEL:-claude-sonnet-4-6}"
 WATCHER_PID=""
+GRAPH_WATCHER_PID=""
 
 # ============================================================
 #                     HELPERS
@@ -67,8 +70,8 @@ remove_images() {
 
 wipe_generated_data() {
   echo ""
-  echo "Removing generated data (raw/, markdown/, markdown_codex/, browser_state/)..."
-  rm -rf "$SCRIPT_DIR/raw" "$SCRIPT_DIR/markdown" "$SCRIPT_DIR/markdown_codex" "$SCRIPT_DIR/browser_state"
+  echo "Removing generated data (raw/, markdown/, markdown_codex/, browser_state/, graphify-out/)..."
+  rm -rf "$SCRIPT_DIR/raw" "$SCRIPT_DIR/markdown" "$SCRIPT_DIR/markdown_codex" "$SCRIPT_DIR/browser_state" "$SCRIPT_DIR/graphify-out"
   echo "Done. Source data in ~/.claude/projects/ is untouched."
 }
 
@@ -119,7 +122,7 @@ start_summary_watcher() {
         # ~80K-char rollup pieces and recursively summarizing them, so this
         # is a safety net only — we cap at ~400K chars (~100K tokens) so a
         # single oversized segment can still pass through without blowing
-        # the haiku context window.
+        # the sonnet context window.
         input_size=$(wc -c < "$input" | tr -d ' ')
         truncated="$SUMMARY_DIR/${id}.truncated"
         if [ "$input_size" -gt 400000 ]; then
@@ -163,8 +166,64 @@ stop_summary_watcher() {
   fi
 }
 
-# Ensure watcher is killed on script exit
-trap stop_summary_watcher EXIT
+# ============================================================
+#   GRAPH WATCHER — auto-generates Graphify concept graph on startup,
+#   then watches for re-generation requests from the dashboard.
+# ============================================================
+start_graph_watcher() {
+  if ! command -v claude &>/dev/null; then
+    echo "    Note: 'claude' CLI not found — concept graph disabled."
+    return
+  fi
+  if ! $PYTHON -c "import graphify" 2>/dev/null; then
+    echo "    Note: graphifyy not installed — concept graph disabled."
+    echo "    Install to enable: pip3 install graphifyy"
+    return
+  fi
+
+  mkdir -p "$GRAPHIFY_OUT"
+
+  # Clear stale status from previous runs
+  rm -f "$GRAPHIFY_OUT/.status" "$GRAPHIFY_OUT/.generate_requested" "$GRAPHIFY_OUT/.progress"
+
+  (
+    # Auto-generate on startup
+    GRAPHIFY_MODEL="$GRAPHIFY_MODEL" GRAPHIFY_OUT="$GRAPHIFY_OUT" \
+      $PYTHON "$SCRIPT_DIR/graph_extract.py"
+
+    # Then watch for re-generation requests from the dashboard
+    while true; do
+      trigger="$GRAPHIFY_OUT/.generate_requested"
+      if [ -f "$trigger" ]; then
+        rm -f "$trigger"
+        # Clear chunk cache so re-generation re-extracts all files
+        rm -f "$GRAPHIFY_OUT"/.graphify_chunk_*.json
+        GRAPHIFY_MODEL="$GRAPHIFY_MODEL" GRAPHIFY_OUT="$GRAPHIFY_OUT" \
+          $PYTHON "$SCRIPT_DIR/graph_extract.py"
+      fi
+      sleep 3
+    done
+  ) &
+  GRAPH_WATCHER_PID=$!
+  echo "    Graph watcher started (PID $GRAPH_WATCHER_PID, model: $GRAPHIFY_MODEL)"
+}
+
+stop_graph_watcher() {
+  if [ -n "$GRAPH_WATCHER_PID" ]; then
+    kill "$GRAPH_WATCHER_PID" 2>/dev/null || true
+    wait "$GRAPH_WATCHER_PID" 2>/dev/null || true
+    GRAPH_WATCHER_PID=""
+    echo "    Graph watcher stopped."
+  fi
+}
+
+stop_all_watchers() {
+  stop_summary_watcher
+  stop_graph_watcher
+}
+
+# Ensure watchers are killed on script exit
+trap stop_all_watchers EXIT
 
 # ============================================================
 #                  PARSE ARGUMENTS
@@ -189,7 +248,8 @@ for arg in "$@"; do
       echo ""
       echo "Environment:"
       echo "  PORT              Server port (default: 5050)"
-      echo "  SUMMARY_MODEL     Claude model for summaries (default: claude-haiku-4-5-20251001)"
+      echo "  SUMMARY_MODEL     Claude model for summaries (default: claude-sonnet-4-6)"
+      echo "  GRAPHIFY_MODEL    Claude model for concept graph (default: claude-sonnet-4-6)"
       exit 0
       ;;
     -*) ;;
@@ -225,8 +285,9 @@ check_docker
 echo "==> Starting Docker Compose..."
 PORT="$PORT" docker compose -f "$COMPOSE_FILE" up --build -d
 
-echo "==> Starting summary watcher..."
+echo "==> Starting watchers..."
 start_summary_watcher
+start_graph_watcher
 
 echo ""
 echo "=============================="
@@ -239,6 +300,7 @@ echo "Press q + Enter = stop & remove images"
 echo "Press v + Enter = stop, remove images, volumes (pgdata) & generated data"
 echo "Press r + Enter = full reset & restart (wipe, re-export, rebuild)"
 echo "=============================="
+echo " "
 
 # Auto-open browser
 if command -v open &>/dev/null; then
@@ -251,19 +313,20 @@ fi
 
 while true; do
     read -rp "Enter selection (k/q/v/r): " CHOICE
+    echo
     CHOICE=$(printf '%s' "$CHOICE" | tr '[:upper:]' '[:lower:]')
     case "$CHOICE" in
         k)
             echo ""
             echo "Stopping containers but keeping images..."
-            stop_summary_watcher
+            stop_all_watchers
             docker compose -f "$COMPOSE_FILE" down
             exit 0
             ;;
         q)
             echo ""
             echo "Stopping and removing all containers..."
-            stop_summary_watcher
+            stop_all_watchers
             docker compose -f "$COMPOSE_FILE" down --remove-orphans
             remove_images
             exit 0
@@ -271,7 +334,7 @@ while true; do
         v)
             echo ""
             echo "Stopping and removing all containers and volumes..."
-            stop_summary_watcher
+            stop_all_watchers
             docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
             remove_images
             wipe_generated_data
@@ -281,7 +344,7 @@ while true; do
             echo ""
             echo "==> Full reset & restart..."
 
-            stop_summary_watcher
+            stop_all_watchers
             docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
             remove_images
             wipe_generated_data
@@ -291,8 +354,9 @@ while true; do
             echo "==> Rebuilding Docker image..."
             PORT="$PORT" docker compose -f "$COMPOSE_FILE" up --build -d
 
-            echo "==> Starting summary watcher..."
+            echo "==> Starting watchers..."
             start_summary_watcher
+            start_graph_watcher
 
             echo ""
             echo "=============================="

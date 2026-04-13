@@ -19,7 +19,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import text
+from sqlalchemy import select, text, update
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}")
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -353,6 +358,81 @@ async def load_provider(
     return len(sessions)
 
 
+async def _embed_new_sessions() -> int:
+    """Generate embeddings for sessions that don't have them yet.
+
+    Queries Postgres for sessions with NULL embedding, builds compressed
+    session text per DESIGN.md section 3, embeds via all-MiniLM-L6-v2 ONNX,
+    and stores the 384-dim vectors back into the sessions table.
+    """
+    from embed import build_session_text, embed_text
+
+    async with async_session() as db:
+        # Find sessions without embeddings
+        result = await db.execute(
+            select(
+                Session.id,
+                Session.project,
+                Session.model,
+                Session.summary_text,
+            ).where(Session.embedding.is_(None))
+        )
+        rows = result.all()
+
+        if not rows:
+            return 0
+
+        session_ids = [r[0] for r in rows]
+
+        # Batch fetch topics for all unembedded sessions
+        topics_result = await db.execute(
+            select(SessionTopic.session_id, SessionTopic.topic).where(
+                SessionTopic.session_id.in_(session_ids)
+            )
+        )
+        topics_by_session: dict[str, list[str]] = defaultdict(list)
+        for sid, topic in topics_result.all():
+            topics_by_session[sid].append(topic)
+
+        # Batch fetch distinct tool names per session
+        tools_result = await db.execute(
+            select(ToolCall.session_id, ToolCall.tool_name)
+            .where(ToolCall.session_id.in_(session_ids))
+            .distinct()
+        )
+        tools_by_session: dict[str, list[str]] = defaultdict(list)
+        for sid, tool_name in tools_result.all():
+            tools_by_session[sid].append(tool_name)
+
+        count = 0
+        for sid, project, model, summary_text in rows:
+            session_text = build_session_text(
+                project,
+                model,
+                summary_text,
+                topics_by_session.get(sid, []),
+                tools_by_session.get(sid, []),
+            )
+            if not session_text.strip():
+                continue
+
+            vector = embed_text(session_text)
+            await db.execute(
+                update(Session)
+                .where(Session.id == sid)
+                .values(embedding=vector)
+            )
+            count += 1
+
+            if count % 100 == 0:
+                _log(f"  Embedded {count}/{len(rows)} sessions...")
+                await db.commit()
+
+        await db.commit()
+
+    return count
+
+
 async def load_all(
     claude_markdown_dir: str,
     codex_markdown_dir: str,
@@ -367,52 +447,57 @@ async def load_all(
 
     # Claude
     claude_meta = read_claude_metadata(raw_projects_dir)
-    print(f"Read JSONL metadata for {len(claude_meta)} Claude sessions")
+    _log(f"Read JSONL metadata for {len(claude_meta)} Claude sessions")
     count = await load_provider("claude", claude_markdown_dir, claude_meta)
     results["claude"] = count
-    print(f"Loaded {count} Claude sessions into Postgres")
+    _log(f"Loaded {count} Claude sessions into Postgres")
 
     # Codex
     if Path(codex_markdown_dir).exists():
         codex_meta = read_codex_metadata(codex_sessions_dir)
-        print(f"Read JSONL metadata for {len(codex_meta)} Codex sessions")
+        _log(f"Read JSONL metadata for {len(codex_meta)} Codex sessions")
         count = await load_provider("codex", codex_markdown_dir, codex_meta)
         results["codex"] = count
-        print(f"Loaded {count} Codex sessions into Postgres")
+        _log(f"Loaded {count} Codex sessions into Postgres")
 
     # Run Graphify and import concept graph
     await _run_graphify_and_import(claude_markdown_dir)
+
+    # Generate embeddings for sessions that don't have them yet.
+    # Non-fatal: if model download fails or ONNX errors out, the app
+    # still works with keyword-only search. Incremental on next run.
+    try:
+        embedded = await _embed_new_sessions()
+        if embedded > 0:
+            _log(f"Generated embeddings for {embedded} sessions")
+    except Exception as e:
+        _log(f"Embedding generation failed (non-fatal): {e}")
 
     return results
 
 
 async def _run_graphify_and_import(markdown_dir: str) -> None:
-    """Run Graphify against markdown directory and import the concept graph."""
-    project_root = Path(__file__).resolve().parent.parent.parent
-    graphify_out = project_root / "graphify-out"
+    """Import a pre-generated Graphify concept graph into Postgres.
+
+    Graphify's semantic extraction requires LLM API access and is too
+    expensive to run automatically on every data load. Instead, the user
+    generates graphify-out/graph.json externally (via the graphify CLI)
+    and this function imports it on startup.
+
+    If no graph.json exists, this is silently skipped.
+    """
+    graphify_out = Path(os.environ.get("GRAPHIFY_OUT", "/data/graphify-out"))
     graph_path = graphify_out / "graph.json"
 
-    # Run Graphify to generate the concept graph
-    try:
-        from graphify import Graphify
-        print(f"Running Graphify against {markdown_dir}...")
-        g = Graphify()
-        g.process(markdown_dir, str(graphify_out))
-        print(f"Graphify output: {graphify_out}")
-    except Exception as e:
-        print(f"Graphify generation failed (non-fatal): {e}")
-        return
-
     if not graph_path.exists():
-        print("Graphify produced no graph.json — skipping import")
         return
 
     try:
         from import_graph import import_graph
         await import_graph(str(graph_path))
-        print("Graphify concept graph imported into Postgres")
+        _log("Graphify concept graph imported into Postgres")
     except Exception as e:
-        print(f"Graphify import failed (non-fatal): {e}")
+        _log(f"Graphify import failed (non-fatal): {e}")
 
 
 async def main() -> None:
@@ -440,7 +525,7 @@ async def main() -> None:
 
     await init_db()
     results = await load_all(claude_md, codex_md, raw_projects, codex_sessions)
-    print(f"Load complete: {results}")
+    _log(f"Load complete: {results}")
 
 
 if __name__ == "__main__":

@@ -6,14 +6,25 @@ export default function SearchResults({ results, onSelectSession, searchQuery })
     return <div className="empty-state">No results found</div>;
   }
 
+  const maxRank = Math.max(...results.map((r) => r.rank || 0), 0.001);
+
   return (
     <div className="search-results">
-      {results.map((r) => (
+      {results.map((r, idx) => (
         <div
           key={r.session_id}
           className="search-result-card"
           onClick={() => onSelectSession(r)}
         >
+          <div className="search-result-relevance-row">
+            <span className="search-result-rank">#{idx + 1}</span>
+            <div className="search-result-relevance-track">
+              <div
+                className="search-result-relevance-fill"
+                style={{ width: `${Math.round(((r.rank || 0) / maxRank) * 100)}%` }}
+              />
+            </div>
+          </div>
           <div className="search-result-header">
             <span className="search-result-project">{r.project}</span>
             <span className="search-result-date">

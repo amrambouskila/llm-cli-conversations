@@ -14,6 +14,10 @@ async function request(url, options) {
   return res.json();
 }
 
+export async function fetchReady() {
+  return request(`${BASE}/api/ready`);
+}
+
 export async function fetchProviders() {
   return request(`${BASE}/api/providers`);
 }
@@ -48,6 +52,10 @@ export async function searchSessions(query, provider = "claude") {
 
 export async function fetchSearchFilters(provider = "claude") {
   return request(`${BASE}/api/search/filters?provider=${provider}`);
+}
+
+export async function fetchSearchStatus(provider = "claude") {
+  return request(`${BASE}/api/search/status?provider=${provider}`);
 }
 
 export async function fetchRelatedSessions(sessionId) {
@@ -131,6 +139,64 @@ export async function restoreAll() {
 
 export async function fetchHidden() {
   return request(`${BASE}/api/hidden`);
+}
+
+// Dashboard endpoints
+export async function fetchDashboardSummary(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/summary?${qs}`);
+}
+
+export async function fetchDashboardCostOverTime(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/cost-over-time?${qs}`);
+}
+
+export async function fetchDashboardProjects(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/projects?${qs}`);
+}
+
+export async function fetchDashboardTools(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/tools?${qs}`);
+}
+
+export async function fetchDashboardModels(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/models?${qs}`);
+}
+
+export async function fetchDashboardSessionTypes(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/session-types?${qs}`);
+}
+
+export async function fetchDashboardHeatmap(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/heatmap?${qs}`);
+}
+
+export async function fetchDashboardAnomalies(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/anomalies?${qs}`);
+}
+
+export async function fetchDashboardGraph(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/graph?${qs}`);
+}
+
+export async function fetchDashboardGraphStatus() {
+  return request(`${BASE}/api/dashboard/graph/status`);
+}
+
+export async function triggerDashboardGraphGenerate() {
+  return request(`${BASE}/api/dashboard/graph/generate`, { method: "POST" });
+}
+
+export async function importDashboardGraph() {
+  return request(`${BASE}/api/dashboard/graph/import`, { method: "POST" });
 }
 
 // Fetch with hidden items visible

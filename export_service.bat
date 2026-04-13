@@ -8,12 +8,14 @@ set "SERVICE_PREFIX=llm-cli-conversation-export"
 set "COMPOSE_FILE=docker-compose.yml"
 if "%PORT%"=="" set "PORT=5050"
 if "%POSTGRES_PORT%"=="" set "POSTGRES_PORT=5432"
-if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-haiku-4-5-20251001"
+if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-sonnet-4-6"
+if "%GRAPHIFY_MODEL%"=="" set "GRAPHIFY_MODEL=claude-sonnet-4-6"
 
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 
 set "SUMMARY_DIR=%SCRIPT_DIR%browser_state\summaries"
+set "GRAPHIFY_OUT=%SCRIPT_DIR%graphify-out"
 
 REM ============================================================
 REM                  PARSE ARGUMENTS
@@ -53,7 +55,8 @@ echo   project-filter  Only export projects matching this string
 echo.
 echo Environment:
 echo   PORT              Server port (default: 5050)
-echo   SUMMARY_MODEL     Claude model for summaries (default: claude-haiku-4-5-20251001)
+echo   SUMMARY_MODEL     Claude model for summaries (default: claude-sonnet-4-6)
+echo   GRAPHIFY_MODEL    Claude model for concept graph (default: claude-sonnet-4-6)
 exit /b 0
 
 :done_args
@@ -103,8 +106,9 @@ REM ============================================================
 echo ==^> Starting Docker Compose...
 docker compose -f "%COMPOSE_FILE%" up --build -d
 
-REM Start summary watcher
+REM Start watchers
 call :start_summary_watcher
+call :start_graph_watcher
 
 echo.
 echo ==============================
@@ -124,6 +128,7 @@ start http://localhost:%PORT%
 
 :wait_choice
 set /p "CHOICE=Enter selection (k/q/v/r): "
+echo.
 if /I "%CHOICE%"=="k" goto stop_only
 if /I "%CHOICE%"=="q" goto full_cleanup
 if /I "%CHOICE%"=="v" goto full_cleanup_with_volumes
@@ -138,6 +143,7 @@ REM ============================================================
 echo.
 echo Stopping containers but keeping images...
 call :stop_summary_watcher
+call :stop_graph_watcher
 docker compose -f "%COMPOSE_FILE%" down
 goto end_script
 
@@ -148,6 +154,7 @@ REM ============================================================
 echo.
 echo Stopping and removing all containers...
 call :stop_summary_watcher
+call :stop_graph_watcher
 docker compose -f "%COMPOSE_FILE%" down --remove-orphans
 call :remove_images
 goto end_script
@@ -159,6 +166,7 @@ REM ============================================================
 echo.
 echo Stopping and removing all containers and volumes...
 call :stop_summary_watcher
+call :stop_graph_watcher
 docker compose -f "%COMPOSE_FILE%" down --volumes --remove-orphans
 call :remove_images
 call :wipe_generated_data
@@ -172,6 +180,7 @@ echo.
 echo ==^> Full reset ^& restart...
 
 call :stop_summary_watcher
+call :stop_graph_watcher
 docker compose -f "%COMPOSE_FILE%" down --volumes --remove-orphans
 call :remove_images
 call :wipe_generated_data
@@ -183,6 +192,7 @@ echo ==^> Rebuilding Docker image...
 docker compose -f "%COMPOSE_FILE%" up --build -d
 
 call :start_summary_watcher
+call :start_graph_watcher
 
 echo.
 echo ==============================
@@ -229,6 +239,14 @@ if not "%FILTER%"=="" (
     %PYTHON% convert_export.py
 )
 echo.
+REM Also export Codex sessions if available
+set "CODEX_SRC=%CODEX_SESSIONS_DIR%"
+if "%CODEX_SRC%"=="" set "CODEX_SRC=%USERPROFILE%\.codex\sessions"
+if exist "%CODEX_SRC%" (
+    echo ==^> Exporting Codex sessions...
+    %PYTHON% convert_codex_sessions.py "%CODEX_SRC%" "%SCRIPT_DIR%markdown_codex"
+    echo.
+)
 goto :eof
 
 :remove_images
@@ -258,11 +276,12 @@ goto :eof
 
 :wipe_generated_data
 echo.
-echo Removing generated data (raw\, markdown\, markdown_codex\, browser_state\)...
+echo Removing generated data (raw\, markdown\, markdown_codex\, browser_state\, graphify-out\)...
 if exist "%SCRIPT_DIR%raw" rmdir /s /q "%SCRIPT_DIR%raw"
 if exist "%SCRIPT_DIR%markdown" rmdir /s /q "%SCRIPT_DIR%markdown"
 if exist "%SCRIPT_DIR%markdown_codex" rmdir /s /q "%SCRIPT_DIR%markdown_codex"
 if exist "%SCRIPT_DIR%browser_state" rmdir /s /q "%SCRIPT_DIR%browser_state"
+if exist "%GRAPHIFY_OUT%" rmdir /s /q "%GRAPHIFY_OUT%"
 echo Done. Source data in %USERPROFILE%\.claude\projects\ is untouched.
 goto :eof
 
@@ -291,6 +310,39 @@ if exist "%PID_FILE%" (
 REM Fallback: kill by window title
 taskkill /f /fi "WINDOWTITLE eq summary_watcher" >nul 2>&1
 echo     Summary watcher stopped.
+goto :eof
+
+:start_graph_watcher
+where claude >nul 2>&1
+if errorlevel 1 (
+    echo     Note: 'claude' CLI not found — concept graph disabled.
+    goto :eof
+)
+python -c "import graphify" >nul 2>&1
+if errorlevel 1 (
+    echo     Note: graphifyy not installed — concept graph disabled.
+    echo     Install to enable: pip install graphifyy
+    goto :eof
+)
+if not exist "%GRAPHIFY_OUT%" mkdir "%GRAPHIFY_OUT%"
+REM Clear stale status
+if exist "%GRAPHIFY_OUT%\.status" del /f "%GRAPHIFY_OUT%\.status"
+if exist "%GRAPHIFY_OUT%\.generate_requested" del /f "%GRAPHIFY_OUT%\.generate_requested"
+if exist "%GRAPHIFY_OUT%\.progress" del /f "%GRAPHIFY_OUT%\.progress"
+echo ==^> Starting graph watcher (model: %GRAPHIFY_MODEL%)...
+start "graph_watcher" /min cmd /c "%SCRIPT_DIR%graph_watcher.bat"
+timeout /t 1 /nobreak >nul
+goto :eof
+
+:stop_graph_watcher
+set "GPID_FILE=%GRAPHIFY_OUT%\graph_watcher.pid"
+if exist "%GPID_FILE%" (
+    set /p GWATCHER_PID=<"%GPID_FILE%"
+    taskkill /f /pid !GWATCHER_PID! >nul 2>&1
+    del /f "%GPID_FILE%" 2>nul
+)
+taskkill /f /fi "WINDOWTITLE eq graph_watcher" >nul 2>&1
+echo     Graph watcher stopped.
 goto :eof
 
 REM ============================================================

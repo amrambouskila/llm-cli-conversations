@@ -5,6 +5,8 @@ import SearchResults from "./components/SearchResults";
 import FilterChips from "./components/FilterChips";
 import ContentViewer from "./components/ContentViewer";
 import MetadataPanel from "./components/MetadataPanel";
+import Dashboard from "./components/Dashboard";
+import KnowledgeGraph from "./components/KnowledgeGraph";
 import {
   TokenCostEstimate,
   MonthlyBreakdown,
@@ -19,6 +21,7 @@ import {
   fetchConversation,
   searchSessions,
   fetchSearchFilters,
+  fetchSearchStatus,
   fetchStats,
   triggerUpdate,
   hideSegment,
@@ -32,10 +35,12 @@ import {
   fetchSegmentsWithHidden,
   fetchSummaryTitles,
   fetchProviders,
+  fetchReady,
 } from "./api";
 import { formatNumber, formatTimestamp } from "./utils";
 
 export default function App() {
+  const [backendReady, setBackendReady] = useState(false);
   const [providers, setProviders] = useState([]);
   const [provider, setProvider] = useState("claude");
   const [projects, setProjects] = useState([]);
@@ -51,6 +56,7 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
   const [filterOptions, setFilterOptions] = useState(null);
+  const [searchMode, setSearchMode] = useState(null);
   const searchRef = useRef(null);
   const searchTimerRef = useRef(null);
 
@@ -74,6 +80,7 @@ export default function App() {
   const dragging = useRef(null);
   const mainRef = useRef(null);
 
+  const [activeTab, setActiveTab] = useState("conversations");
   const [showHidden, setShowHidden] = useState(false);
   const [summaryTitles, setSummaryTitles] = useState({});
 
@@ -82,6 +89,42 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  // Poll backend readiness
+  useEffect(() => {
+    let timer = null;
+    const check = () => {
+      fetchReady()
+        .then((r) => {
+          if (r.ready) setBackendReady(true);
+          else timer = setTimeout(check, 1000);
+        })
+        .catch(() => { timer = setTimeout(check, 1000); });
+    };
+    check();
+    return () => { if (timer) clearTimeout(timer); };
+  }, []);
+
+  // Poll search status until both hybrid mode and graph are active
+  useEffect(() => {
+    if (!backendReady) return;
+    let timer = null;
+    let cancelled = false;
+    const poll = () => {
+      fetchSearchStatus(provider)
+        .then((s) => {
+          if (cancelled) return;
+          setSearchMode(s);
+          const settled = s.mode === "hybrid" && s.has_graph;
+          if (!settled) timer = setTimeout(poll, 5000);
+        })
+        .catch(() => {
+          if (!cancelled) timer = setTimeout(poll, 10000);
+        });
+    };
+    poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [backendReady, provider]);
 
   const loadProjects = useCallback(() => {
     const fn = showHidden ? fetchProjectsWithHidden : fetchProjects;
@@ -253,6 +296,25 @@ export default function App() {
     try { await restoreAll(); await refreshAfterStateChange(); } catch (err) { console.error(err); }
   }, [refreshAfterStateChange]);
 
+  const handleDashboardNavigate = useCallback(async (project, conversationId, searchTerm) => {
+    setActiveTab("conversations");
+    if (searchTerm) {
+      setSearchQuery(searchTerm);
+      return;
+    }
+    if (project && conversationId) {
+      setSelectedProject(project);
+      try {
+        const segs = await (showHidden ? fetchSegmentsWithHidden : fetchSegments)(project, provider);
+        setSegments(segs);
+        setConvViewData(await fetchConversation(project, conversationId, provider));
+        setSelectedSegmentId(null);
+        setSegmentDetail(null);
+        setRequestsHeader(`Requests \u2014 ${project}`);
+      } catch (err) { console.error(err); }
+    }
+  }, [showHidden, provider]);
+
   const handleUpdate = useCallback(async () => {
     setIsUpdating(true); setUpdateStatus(null);
     try {
@@ -344,6 +406,20 @@ export default function App() {
   // Get selected project data for project-level analytics
   const selectedProjectData = selectedProject ? projects.find((p) => p.name === selectedProject) : null;
 
+  if (!backendReady) {
+    return (
+      <div className="app">
+        <div className="startup-loading">
+          <h1>Conversation Browser</h1>
+          <div className="startup-loading-bar">
+            <div className="startup-loading-fill" />
+          </div>
+          <div className="startup-loading-text">Loading conversations into database...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <div className="header">
@@ -365,6 +441,26 @@ export default function App() {
           {providers.length <= 1 && (
             <span className="provider-label">{provider.charAt(0).toUpperCase() + provider.slice(1)}</span>
           )}
+          <div className="header-tabs">
+            <button
+              className={`header-tab${activeTab === "conversations" ? " header-tab-active" : ""}`}
+              onClick={() => setActiveTab("conversations")}
+            >
+              Conversations
+            </button>
+            <button
+              className={`header-tab${activeTab === "dashboard" ? " header-tab-active" : ""}`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              Dashboard
+            </button>
+            <button
+              className={`header-tab${activeTab === "graph" ? " header-tab-active" : ""}`}
+              onClick={() => setActiveTab("graph")}
+            >
+              Knowledge Graph
+            </button>
+          </div>
         </div>
         <div className="header-right">
           <div className="stats">{statsText}</div>
@@ -383,117 +479,155 @@ export default function App() {
         </div>
       </div>
 
-      <div className="search-bar">
-        <input ref={searchRef} type="text" placeholder="Search conversations... (Cmd+K) — try project:name tool:Bash after:2026-01-01" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-        <button className="toolbar-btn filter-toggle" onClick={() => setShowDateFilter(!showDateFilter)} title="Toggle filters">
-          {showDateFilter ? "Hide Filters" : "Filters"}
-        </button>
-      </div>
-      {showDateFilter && (
-        <div className="filter-bar-expanded">
-          <FilterChips filterOptions={filterOptions} searchQuery={searchQuery} onQueryChange={setSearchQuery} />
-          <div className="date-filter-bar">
-            <label>From:<input type="date" value={pendingDateFrom} onChange={(e) => setPendingDateFrom(e.target.value)} /></label>
-            <label>To:<input type="date" value={pendingDateTo} onChange={(e) => setPendingDateTo(e.target.value)} /></label>
-            <button className="toolbar-btn" onClick={() => { setDateFrom(pendingDateFrom); setDateTo(pendingDateTo); }}>Apply</button>
-            {(dateFrom || dateTo) && <button className="toolbar-btn" onClick={() => { setDateFrom(""); setDateTo(""); setPendingDateFrom(""); setPendingDateTo(""); }}>Clear</button>}
+      {activeTab === "conversations" && (
+        <>
+          <div className="search-bar">
+            <input ref={searchRef} type="text" placeholder="Search conversations... (Cmd+K) — try project:name tool:Bash after:2026-01-01" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            {searchMode && searchMode.mode !== "unavailable" && (
+              <div className="search-mode-badges">
+                <span className={`search-mode-badge search-mode-${searchMode.mode}`} title={
+                  searchMode.mode === "hybrid"
+                    ? `Hybrid search — ${searchMode.embedded_sessions}/${searchMode.total_sessions} sessions embedded`
+                    : searchMode.mode === "embedding"
+                    ? `Embedding in progress — ${searchMode.embedded_sessions}/${searchMode.total_sessions} sessions`
+                    : "Keyword search only — embeddings generating..."
+                }>
+                  {searchMode.mode === "hybrid" ? "Hybrid" : searchMode.mode === "embedding" ? `Embedding ${Math.round((searchMode.embedded_sessions / searchMode.total_sessions) * 100)}%` : "Keyword"}
+                </span>
+                <span className={`search-mode-badge search-mode-graph-${searchMode.has_graph ? "on" : "off"}`} title={
+                  searchMode.has_graph
+                    ? `Knowledge graph active — ${searchMode.concept_count} concepts with community data`
+                    : "Knowledge graph not loaded — community re-ranking inactive"
+                }>
+                  {searchMode.has_graph ? "Graph" : "No Graph"}
+                </span>
+              </div>
+            )}
+            <button className="toolbar-btn filter-toggle" onClick={() => setShowDateFilter(!showDateFilter)} title="Toggle filters">
+              {showDateFilter ? "Hide Filters" : "Filters"}
+            </button>
           </div>
-        </div>
+          {showDateFilter && (
+            <div className="filter-bar-expanded">
+              <FilterChips filterOptions={filterOptions} searchQuery={searchQuery} onQueryChange={setSearchQuery} />
+              <div className="date-filter-bar">
+                <label>From:<input type="date" value={pendingDateFrom} onChange={(e) => setPendingDateFrom(e.target.value)} /></label>
+                <label>To:<input type="date" value={pendingDateTo} onChange={(e) => setPendingDateTo(e.target.value)} /></label>
+                <button className="toolbar-btn" onClick={() => { setDateFrom(pendingDateFrom); setDateTo(pendingDateTo); }}>Apply</button>
+                {(dateFrom || dateTo) && <button className="toolbar-btn" onClick={() => { setDateFrom(""); setDateTo(""); setPendingDateFrom(""); setPendingDateTo(""); }}>Clear</button>}
+              </div>
+            </div>
+          )}
+
+          <div className="main" ref={mainRef}>
+            {/* Pane 1: Projects */}
+            <div className="pane pane-projects" style={{ width: projectsWidth }}>
+              <div className="pane-header" style={{ cursor: selectedProject ? "pointer" : "default" }} onClick={selectedProject ? handleDeselectProject : undefined} title={selectedProject ? "Click to deselect project" : ""}>Projects{selectedProject ? " \u2190" : ""}</div>
+              <div className="pane-content">
+                <ProjectList projects={projects} selected={selectedProject} onSelect={handleSelectProject} onHideProject={handleHideProject} onRestoreProject={handleRestoreProject} showHidden={showHidden} dateFrom={dateFrom} dateTo={dateTo} />
+              </div>
+            </div>
+
+            <div className="resize-handle" onMouseDown={() => { dragging.current = "projects"; }} />
+
+            {/* Pane 2: Requests / Search Results */}
+            <div className="pane pane-requests" style={{ width: requestsWidth }}>
+              <div className="pane-header">{requestsHeader}</div>
+              <div className="pane-content">
+                {isSearching ? <div className="loading">Searching...</div>
+                  : isInSearchMode && searchResults ? <SearchResults results={searchResults} onSelectSession={handleSelectSearchResult} searchQuery={searchQuery} />
+                  : segments.length > 0 ? <RequestList segments={segments} selectedId={selectedSegmentId} onSelect={handleSelectSegment} onViewConversation={selectedProject ? handleViewConversation : null} onHideSegment={handleHideSegment} onRestoreSegment={handleRestoreSegment} onHideConversation={handleHideConversation} onRestoreConversation={handleRestoreConversation} showProject={showProject} showHidden={showHidden} dateFrom={dateFrom} dateTo={dateTo} summaryTitles={summaryTitles} projectName={selectedProject} />
+                  : selectedProject ? <div className="empty-state">No requests found</div>
+                  : <div className="empty-state">Select a project</div>}
+              </div>
+            </div>
+
+            <div className="resize-handle" onMouseDown={() => { dragging.current = "requests"; }} />
+
+            {/* Pane 3: Content viewer */}
+            <div className="pane-content-area">
+              <ContentViewer markdown={viewingMarkdown} searchQuery={searchQuery.length >= 2 ? searchQuery : null} onExport={viewingMarkdown ? handleExport : null} sourceFile={viewingSource} segmentId={convViewData ? null : selectedSegmentId} conversationId={convViewData ? convViewData.conversation_id : null} projectName={selectedProject} provider={provider} onTitleReady={handleTitleReady} />
+            </div>
+
+            {/* Resize handle for metadata */}
+            <div className="resize-handle" onMouseDown={() => { dragging.current = "metadata"; }} />
+
+            {/* Pane 4: Metadata */}
+            <div className="pane pane-metadata" style={{ width: metadataWidth, flexShrink: 0 }}>
+              <div className="pane-header">Metadata</div>
+              <div className="pane-content">
+                {/* Contextual: segment or conversation detail */}
+                {convViewData && (
+                  <div className="metadata-panel">
+                    <h4>Conversation View</h4>
+                    <div className="metadata-list">
+                      <div className="meta-item"><span className="label">Conversation</span><span className="value">{convViewData.conversation_id}</span></div>
+                      <div className="meta-item"><span className="label">Segments</span><span className="value">{convViewData.segment_count}</span></div>
+                      <div className="meta-item"><span className="label">Words</span><span className="value">{formatNumber(convViewData.metrics.word_count)}</span></div>
+                      <div className="meta-item"><span className="label">Est. Tokens</span><span className="value">{formatNumber(convViewData.metrics.estimated_tokens)}</span></div>
+                      <div className="meta-item"><span className="label">Tool Calls</span><span className="value">{convViewData.metrics.tool_call_count}</span></div>
+                    </div>
+                    <TokenCostEstimate tokens={convViewData.metrics.estimated_tokens} provider={provider} />
+                  </div>
+                )}
+                {!convViewData && segmentDetail && (
+                  <MetadataPanel segment={segmentDetail} provider={provider} />
+                )}
+
+                {/* Project-level analytics (always shown when a project is selected) */}
+                {!convViewData && !segmentDetail && selectedProjectData && (
+                  <div className="metadata-panel">
+                    <h4>Project: {selectedProjectData.display_name}</h4>
+                    <div className="metadata-list">
+                      <div className="meta-item"><span className="label">Requests</span><span className="value">{selectedProjectData.total_requests}</span></div>
+                      <div className="meta-item"><span className="label">Conversations</span><span className="value">{selectedProjectData.stats?.total_conversations}</span></div>
+                      <div className="meta-item"><span className="label">Words</span><span className="value">{formatNumber(selectedProjectData.stats?.total_words || 0)}</span></div>
+                      <div className="meta-item"><span className="label">Est. Tokens</span><span className="value">{formatNumber(selectedProjectData.stats?.estimated_tokens || 0)}</span></div>
+                      <div className="meta-item"><span className="label">Tool Calls</span><span className="value">{selectedProjectData.stats?.total_tool_calls}</span></div>
+                      {selectedProjectData.stats?.first_timestamp && <div className="meta-item"><span className="label">First Activity</span><span className="value">{formatTimestamp(selectedProjectData.stats.first_timestamp)}</span></div>}
+                      {selectedProjectData.stats?.last_timestamp && <div className="meta-item"><span className="label">Last Activity</span><span className="value">{formatTimestamp(selectedProjectData.stats.last_timestamp)}</span></div>}
+                    </div>
+                    <TokenCostEstimate tokens={selectedProjectData.stats?.estimated_tokens || 0} provider={provider} />
+                    <RequestSizeSparkline sizes={selectedProjectData.stats?.request_sizes} />
+                    <ConversationTimeline timestamps={selectedProjectData.stats?.conversation_timeline} firstTs={selectedProjectData.stats?.first_timestamp} lastTs={selectedProjectData.stats?.last_timestamp} />
+                    <ToolBreakdownChart breakdown={selectedProjectData.stats?.tool_breakdown} />
+                  </div>
+                )}
+
+                {/* Global stats + monthly — always visible at the bottom */}
+                {stats && (
+                  <div className="metadata-panel metadata-panel-global">
+                    <h4>Global Totals</h4>
+                    <div className="metadata-list">
+                      <div className="meta-item"><span className="label">Projects</span><span className="value">{stats.total_projects}</span></div>
+                      <div className="meta-item"><span className="label">Total Requests</span><span className="value">{stats.total_segments}</span></div>
+                      <div className="meta-item"><span className="label">Total Words</span><span className="value">{formatNumber(stats.total_words)}</span></div>
+                      <div className="meta-item"><span className="label">Total Tokens</span><span className="value">{formatNumber(stats.estimated_tokens)}</span></div>
+                      <div className="meta-item"><span className="label">Total Tool Calls</span><span className="value">{stats.total_tool_calls}</span></div>
+                    </div>
+                    <TokenCostEstimate tokens={stats.estimated_tokens} provider={provider} />
+                    <MonthlyBreakdown monthly={stats.monthly} provider={provider} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
-      <div className="main" ref={mainRef}>
-        {/* Pane 1: Projects */}
-        <div className="pane pane-projects" style={{ width: projectsWidth }}>
-          <div className="pane-header" style={{ cursor: selectedProject ? "pointer" : "default" }} onClick={selectedProject ? handleDeselectProject : undefined} title={selectedProject ? "Click to deselect project" : ""}>Projects{selectedProject ? " \u2190" : ""}</div>
-          <div className="pane-content">
-            <ProjectList projects={projects} selected={selectedProject} onSelect={handleSelectProject} onHideProject={handleHideProject} onRestoreProject={handleRestoreProject} showHidden={showHidden} dateFrom={dateFrom} dateTo={dateTo} />
-          </div>
-        </div>
+      {activeTab === "dashboard" && (
+        <Dashboard provider={provider} onNavigateToConversation={handleDashboardNavigate} />
+      )}
 
-        <div className="resize-handle" onMouseDown={() => { dragging.current = "projects"; }} />
-
-        {/* Pane 2: Requests / Search Results */}
-        <div className="pane pane-requests" style={{ width: requestsWidth }}>
-          <div className="pane-header">{requestsHeader}</div>
-          <div className="pane-content">
-            {isSearching ? <div className="loading">Searching...</div>
-              : isInSearchMode && searchResults ? <SearchResults results={searchResults} onSelectSession={handleSelectSearchResult} searchQuery={searchQuery} />
-              : segments.length > 0 ? <RequestList segments={segments} selectedId={selectedSegmentId} onSelect={handleSelectSegment} onViewConversation={selectedProject ? handleViewConversation : null} onHideSegment={handleHideSegment} onRestoreSegment={handleRestoreSegment} onHideConversation={handleHideConversation} onRestoreConversation={handleRestoreConversation} showProject={showProject} showHidden={showHidden} dateFrom={dateFrom} dateTo={dateTo} summaryTitles={summaryTitles} projectName={selectedProject} />
-              : selectedProject ? <div className="empty-state">No requests found</div>
-              : <div className="empty-state">Select a project</div>}
-          </div>
-        </div>
-
-        <div className="resize-handle" onMouseDown={() => { dragging.current = "requests"; }} />
-
-        {/* Pane 3: Content viewer */}
-        <div className="pane-content-area">
-          <ContentViewer markdown={viewingMarkdown} searchQuery={searchQuery.length >= 2 ? searchQuery : null} onExport={viewingMarkdown ? handleExport : null} sourceFile={viewingSource} segmentId={convViewData ? null : selectedSegmentId} conversationId={convViewData ? convViewData.conversation_id : null} projectName={selectedProject} provider={provider} onTitleReady={handleTitleReady} />
-        </div>
-
-        {/* Resize handle for metadata */}
-        <div className="resize-handle" onMouseDown={() => { dragging.current = "metadata"; }} />
-
-        {/* Pane 4: Metadata */}
-        <div className="pane pane-metadata" style={{ width: metadataWidth, flexShrink: 0 }}>
-          <div className="pane-header">Metadata</div>
-          <div className="pane-content">
-            {/* Contextual: segment or conversation detail */}
-            {convViewData && (
-              <div className="metadata-panel">
-                <h4>Conversation View</h4>
-                <div className="metadata-list">
-                  <div className="meta-item"><span className="label">Conversation</span><span className="value">{convViewData.conversation_id}</span></div>
-                  <div className="meta-item"><span className="label">Segments</span><span className="value">{convViewData.segment_count}</span></div>
-                  <div className="meta-item"><span className="label">Words</span><span className="value">{formatNumber(convViewData.metrics.word_count)}</span></div>
-                  <div className="meta-item"><span className="label">Est. Tokens</span><span className="value">{formatNumber(convViewData.metrics.estimated_tokens)}</span></div>
-                  <div className="meta-item"><span className="label">Tool Calls</span><span className="value">{convViewData.metrics.tool_call_count}</span></div>
-                </div>
-                <TokenCostEstimate tokens={convViewData.metrics.estimated_tokens} provider={provider} />
-              </div>
-            )}
-            {!convViewData && segmentDetail && (
-              <MetadataPanel segment={segmentDetail} provider={provider} />
-            )}
-
-            {/* Project-level analytics (always shown when a project is selected) */}
-            {!convViewData && !segmentDetail && selectedProjectData && (
-              <div className="metadata-panel">
-                <h4>Project: {selectedProjectData.display_name}</h4>
-                <div className="metadata-list">
-                  <div className="meta-item"><span className="label">Requests</span><span className="value">{selectedProjectData.total_requests}</span></div>
-                  <div className="meta-item"><span className="label">Conversations</span><span className="value">{selectedProjectData.stats?.total_conversations}</span></div>
-                  <div className="meta-item"><span className="label">Words</span><span className="value">{formatNumber(selectedProjectData.stats?.total_words || 0)}</span></div>
-                  <div className="meta-item"><span className="label">Est. Tokens</span><span className="value">{formatNumber(selectedProjectData.stats?.estimated_tokens || 0)}</span></div>
-                  <div className="meta-item"><span className="label">Tool Calls</span><span className="value">{selectedProjectData.stats?.total_tool_calls}</span></div>
-                  {selectedProjectData.stats?.first_timestamp && <div className="meta-item"><span className="label">First Activity</span><span className="value">{formatTimestamp(selectedProjectData.stats.first_timestamp)}</span></div>}
-                  {selectedProjectData.stats?.last_timestamp && <div className="meta-item"><span className="label">Last Activity</span><span className="value">{formatTimestamp(selectedProjectData.stats.last_timestamp)}</span></div>}
-                </div>
-                <TokenCostEstimate tokens={selectedProjectData.stats?.estimated_tokens || 0} provider={provider} />
-                <RequestSizeSparkline sizes={selectedProjectData.stats?.request_sizes} />
-                <ConversationTimeline timestamps={selectedProjectData.stats?.conversation_timeline} firstTs={selectedProjectData.stats?.first_timestamp} lastTs={selectedProjectData.stats?.last_timestamp} />
-                <ToolBreakdownChart breakdown={selectedProjectData.stats?.tool_breakdown} />
-              </div>
-            )}
-
-            {/* Global stats + monthly — always visible at the bottom */}
-            {stats && (
-              <div className="metadata-panel metadata-panel-global">
-                <h4>Global Totals</h4>
-                <div className="metadata-list">
-                  <div className="meta-item"><span className="label">Projects</span><span className="value">{stats.total_projects}</span></div>
-                  <div className="meta-item"><span className="label">Total Requests</span><span className="value">{stats.total_segments}</span></div>
-                  <div className="meta-item"><span className="label">Total Words</span><span className="value">{formatNumber(stats.total_words)}</span></div>
-                  <div className="meta-item"><span className="label">Total Tokens</span><span className="value">{formatNumber(stats.estimated_tokens)}</span></div>
-                  <div className="meta-item"><span className="label">Total Tool Calls</span><span className="value">{stats.total_tool_calls}</span></div>
-                </div>
-                <TokenCostEstimate tokens={stats.estimated_tokens} provider={provider} />
-                <MonthlyBreakdown monthly={stats.monthly} provider={provider} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {activeTab === "graph" && (
+        <KnowledgeGraph
+          provider={provider}
+          onConceptClick={(concept) => {
+            setActiveTab("conversations");
+            handleDashboardNavigate(null, null, `topic:${concept.name}`);
+          }}
+        />
+      )}
     </div>
   );
 }

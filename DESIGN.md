@@ -408,7 +408,7 @@ Extract topics from:
 
 ## 6. Implementation Plan
 
-> **Note:** This section captures the original high-level milestones. The detailed, phased migration plan is in @PLAN.md — follow that for execution order.
+> **Note:** This section captures the original high-level milestones. The detailed, phased migration plan is in @docs/CONVERSATIONS_MASTER_PLAN.md — follow that for execution order.
 
 ### v1 — Foundation + Search ✅ COMPLETE
 
