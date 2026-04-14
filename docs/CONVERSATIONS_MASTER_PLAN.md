@@ -2,7 +2,7 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **Current phase: 6 (6.1–6.7 done, 6.8 next) — Phases 0-5 complete**
+> **Current phase: 7 (Phase 6 ✅ complete — all 7 sub-phases done; Phase 7 next) — Phases 0-6 complete**
 >
 > Update the "Current phase" line above as each phase completes.
 
@@ -134,8 +134,11 @@ gantt
     Phase 4 — Dashboard           :done, p4, after p3, 14d
     Phase 5 — Semantic Search     :done, p5, after p4, 14d
 
-    section Completion
-    Phase 6 — Cleanup Testing CI  :active, p6, after p5, 21d
+    section Safety Net
+    Phase 6 — Cleanup Testing CI  :done, p6, after p5, 21d
+
+    section Restructure
+    Phase 7 — OOP + Final Docs    :active, p7, after p6, 28d
 ```
 
 ### Module dependencies
@@ -842,11 +845,13 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 ---
 
-### Phase 6 — Cleanup, Testing & CI
+### Phase 6 — Cleanup, Testing & CI ✅
 
-**Goal:** Remove dead code, add comprehensive test coverage, set up CI pipeline, then refactor to OOP with the test suite as a safety net. **Final phase — project completion.**
+**Status: COMPLETE.** All 7 sub-phases shipped.
 
-**Execution order:** 6.1–6.4 (cleanup, done) → 6.5–6.6 (tests) → 6.7 (CI) → 6.8 (OOP refactor, done last under test + CI protection) → 6.9 (docs). Tests are written against the current functional architecture so they capture real behavior; 6.8 then refactors under that safety net.
+**Goal:** Remove dead code, add comprehensive test coverage, set up CI pipeline. This is the **safety net** that the Phase 7 OOP restructure runs under — Phase 6 had to land first so Phase 7 has a green CI gate to refactor against.
+
+**Execution order:** 6.1–6.4 (cleanup ✅) → 6.5 (backend tests ✅) → 6.6 (frontend tests ✅) → 6.7 (CI + ruff cleanup ✅). The OOP refactor and final documentation that originally sat under 6.8/6.9 have been promoted into a standalone Phase 7 — see §10 Phase 7 below for why.
 
 #### 6.1 Remove in-memory index code ✅
 - Deleted `index_store.py`; removed `INDEX`/`CODEX_INDEX`, `init_indexes`, `rebuild_index` from `app.py`
@@ -873,7 +878,7 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 **What was built:** 333 passing tests + 2 strict xfails across 12 files in `browser/backend/tests/` — pytest 8 + pytest-asyncio (auto mode, function loop scope) + pytest-cov + testcontainers (pgvector/pgvector:pg16, max_connections=500). 100% line coverage on `search.py`, `topics.py`, `classify.py`, `embed.py`, `models.py`; ~76% on `load.py` (uncovered = CLI main + JSONL metadata paths); route modules register lower because `pytest-cov` + httpx ASGITransport doesn't trace lines executed inside the ASGI task (tests prove handlers ran by asserting real DB state).
 
-**Notable decisions:** (1) NullPool engine swap in `conftest.py` so every test loop gets fresh asyncpg connections — no cross-loop reuse errors; `db.async_session`, `load.async_session`, `import_graph.async_session` all re-pointed in the `db_engine` fixture. (2) `TESTCONTAINERS_RYUK_DISABLED=true` + `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` set at the top of `conftest.py` so the test runner can itself be a sibling container started via the host docker socket. (3) ONNX model never downloaded — `embed.embed_text`, `embed.Tokenizer`, `embed.ort.InferenceSession`, `embed.hf_hub_download` all monkeypatched; the deferred `from embed import embed_text` inside `_embed_new_sessions` and `api_search` picks up the patched value because the import statement executes at call time. (4) Two pre-existing production bugs in `routes/segments.py` (filter-only `func.literal`, date-range `timestamptz >= varchar`) captured as `@pytest.mark.xfail(strict=True)` — see §6.8 "Known bugs flagged by Phase 6.5" for the two-line fixes.
+**Notable decisions:** (1) NullPool engine swap in `conftest.py` so every test loop gets fresh asyncpg connections — no cross-loop reuse errors; `db.async_session`, `load.async_session`, `import_graph.async_session` all re-pointed in the `db_engine` fixture. (2) `TESTCONTAINERS_RYUK_DISABLED=true` + `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` set at the top of `conftest.py` so the test runner can itself be a sibling container started via the host docker socket. (3) ONNX model never downloaded — `embed.embed_text`, `embed.Tokenizer`, `embed.ort.InferenceSession`, `embed.hf_hub_download` all monkeypatched; the deferred `from embed import embed_text` inside `_embed_new_sessions` and `api_search` picks up the patched value because the import statement executes at call time. (4) Two pre-existing production bugs in `routes/segments.py` (filter-only `func.literal`, date-range `timestamptz >= varchar`) captured as `@pytest.mark.xfail(strict=True)` — see Phase 7 §7.2 "Latent bug fixes" for the two-line fixes.
 
 **Test files:** `tests/test_smoke.py`, `test_search.py`, `test_topics.py`, `test_classify.py`, `test_embed.py`, `test_load.py`, `test_api_projects.py`, `test_api_segments.py`, `test_api_conversations.py`, `test_api_visibility.py`, `test_api_stats.py`, `test_api_filters.py`, `test_api_related.py`, `test_api_dashboard.py`, `test_hybrid_search.py`.
 
@@ -891,7 +896,7 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 **Infrastructure additions:** `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `jsdom`, `@vitest/coverage-v8` added to `browser/frontend/package.json` `devDependencies`. Three new scripts: `test`, `test:watch`, `test:coverage`.
 
-**Unreachable defensive code flagged for 6.8 OOP refactor:** (a) `utils.js` lines 39-40 / 52-53 — three branches in private `sanitizeHtml` for tag types/attribute combos that the markdown rules above never produce (every emitted tag is in `ALLOWED_TAGS` and either has no attrs, has `class` only, or is `<hr />` self-closing). (b) `FilterChips.jsx` lines 128-129 — `getOptionsForFilter` fallback `return []` for keys outside project/model/tool/topic; only callable from a JSX guard that already filters to those four keys. Both groups are reachable only by exporting the helpers (a refactor) and should be either tested directly or pruned during the 6.8 service/repository extraction.
+**Unreachable defensive code flagged for Phase 7 OOP refactor:** (a) `utils.js` lines 39-40 / 52-53 — three branches in private `sanitizeHtml` for tag types/attribute combos that the markdown rules above never produce (every emitted tag is in `ALLOWED_TAGS` and either has no attrs, has `class` only, or is `<hr />` self-closing). (b) `FilterChips.jsx` lines 128-129 — `getOptionsForFilter` fallback `return []` for keys outside project/model/tool/topic; only callable from a JSX guard that already filters to those four keys. Both groups are reachable only by exporting the helpers (a refactor) and should be either tested directly or pruned during the Phase 7 service/repository extraction.
 
 #### 6.7 GitHub Actions CI ✅
 
@@ -903,8 +908,8 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 
 - **`ci.yml`** — triggered on `push` to `main` and `pull_request` to `main`. Five jobs in dependency order:
   1. `lint-backend` — `ruff check .` against `browser/backend/` (config in `pyproject.toml`)
-  2. `test-backend` — `needs: lint-backend`. Sets `TESTCONTAINERS_RYUK_DISABLED=true` and `TESTCONTAINERS_HOST_OVERRIDE=localhost` (the macOS-Docker-Desktop host override in `conftest.py` would otherwise misroute on Linux). Pre-pulls `pgvector/pgvector:pg16` to warm the testcontainer cache, installs `libgomp1` for onnxruntime, then runs `pytest --cov --cov-report=xml --cov-fail-under=70`. The 70% gate matches the 6.5 floor (load.py at ~76%); routes register lower because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task — the integration tests prove handlers ran by asserting real DB state, but coverage tooling can't see it. Ratchet up in 6.8 once routes become thin handlers calling extracted services.
-  3. `test-frontend` — `npm ci && npm run test:coverage`. Per-file thresholds enforced via `vitest.config.js` `coverage.thresholds`: utils.js (lines 95 / branches 85 / functions 100), SearchResults.jsx (100/95/100), FilterChips.jsx (95/85/100), App.jsx (70/65/50). Untested files (Dashboard, ConceptGraph, Charts, etc.) are present in the report but not gated — they gain entries in 6.8 as components get extracted and tested.
+  2. `test-backend` — `needs: lint-backend`. Sets `TESTCONTAINERS_RYUK_DISABLED=true` and `TESTCONTAINERS_HOST_OVERRIDE=localhost` (the macOS-Docker-Desktop host override in `conftest.py` would otherwise misroute on Linux). Pre-pulls `pgvector/pgvector:pg16` to warm the testcontainer cache, installs `libgomp1` for onnxruntime, then runs `pytest --cov --cov-report=xml --cov-fail-under=70`. The 70% gate matches the 6.5 floor (load.py at ~76%); routes register lower because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task — the integration tests prove handlers ran by asserting real DB state, but coverage tooling can't see it. Ratchet up in Phase 7 once routes become thin handlers calling extracted services.
+  3. `test-frontend` — `npm ci && npm run test:coverage`. Per-file thresholds enforced via `vitest.config.js` `coverage.thresholds`: utils.js (lines 95 / branches 85 / functions 100), SearchResults.jsx (100/95/100), FilterChips.jsx (95/85/100), App.jsx (70/65/50). Untested files (Dashboard, ConceptGraph, Charts, etc.) are present in the report but not gated — they gain entries in Phase 7 as components get extracted and tested.
   4. `build-frontend` — `needs: test-frontend`. Runs `npm run build` to verify the Vite production bundle compiles.
   5. `docker-build` — `needs: [test-backend, test-frontend]`. Builds the multi-stage root `Dockerfile` (Node frontend → Python runtime) via `docker/build-push-action@v6` with GHA layer cache (`cache-from`/`cache-to: type=gha`). `push: false` — verification only, no registry write.
 
@@ -912,9 +917,9 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 
 - **`release.yml`** — `workflow_dispatch` only, gated to `refs/heads/main`. Single input `bump` (choice: patch/minor/major). Bumps the version field in `browser/frontend/package.json` (the project's source-of-truth — `browser/backend/pyproject.toml` has no `[project]` block), commits as `github-actions[bot]`, tags `vX.Y.Z`, pushes both. `permissions: contents: write`.
 
-**Notable decisions:** (1) Frontend lint is intentionally not in the pipeline — there's no eslint config in the project, and adding one is out of scope (slice 1's "do not add features" rule). When the OOP refactor lands eslint, add a `lint-frontend` job mirroring `lint-backend`. (2) Coverage gate is enforced inside the test stages, not as a separate job — `pytest --cov-fail-under` and vitest's per-file thresholds are sufficient. A separate aggregator job would only add latency. (3) `docker-build` runs after both test jobs, not as the final gate — the concurrent fanout from `test-backend` and `test-frontend` keeps wall-time short. (4) `npm` not `pnpm` throughout — the project uses npm (per slice 1). (5) GHA cache for Docker layers + pip + npm — first run is slow (~5 min), subsequent runs much faster.
+**Notable decisions:** (1) Frontend lint is intentionally not in the pipeline — there's no eslint config in the project, and adding one is out of scope (slice 1's "do not add features" rule). When Phase 7 lands eslint, add a `lint-frontend` job mirroring `lint-backend`. (2) Coverage gate is enforced inside the test stages, not as a separate job — `pytest --cov-fail-under` and vitest's per-file thresholds are sufficient. A separate aggregator job would only add latency. (3) `docker-build` runs after both test jobs, not as the final gate — the concurrent fanout from `test-backend` and `test-frontend` keeps wall-time short. (4) `npm` not `pnpm` throughout — the project uses npm (per slice 1). (5) GHA cache for Docker layers + pip + npm — first run is slow (~5 min), subsequent runs much faster.
 
-**What CI does NOT yet enforce (tracked for 6.8):** route module coverage (currently low for the reason above), the four unreachable defensive branches in utils.js + FilterChips.jsx (flagged in 6.6), and the two latent backend bugs in routes/segments.py (`func.literal` and date-range cast — flagged in 6.5 as `xfail(strict=True)`; will flip to XPASS when 6.8 fixes them, forcing the xfail decorators to be removed).
+**What CI does NOT yet enforce (tracked for Phase 7):** route module coverage (currently low for the reason above), the four unreachable defensive branches in utils.js + FilterChips.jsx (flagged in 6.6), and the two latent backend bugs in routes/segments.py (`func.literal` and date-range cast — flagged in 6.5 as `xfail(strict=True)`; will flip to XPASS when Phase 7 fixes them, forcing the xfail decorators to be removed).
 
 **Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, modified `browser/frontend/vitest.config.js` (added `coverage.thresholds` block).
 
@@ -924,28 +929,47 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 - **Frontend coverage extension**: added `MetadataPanel.test.jsx` (4 tests, 100% lines/branches/funcs) and a corresponding entry in `vitest.config.js` `coverage.thresholds`. Total frontend test count now 104 across 6 files.
 - **`.gitignore` consolidation**: merged the broader patterns from the parent workspace template into the subproject `.gitignore` — IDE (.idea, .vscode, *.swp), env files, expanded Python (*.py[cod], *.pyo, venv/, *.egg-info/), Node (*.tsbuildinfo), Docker overrides. Keeps the project-specific data-dir entries (raw/, markdown/, etc.).
 
-**What is intentionally NOT yet enforced (tracked for 6.8):**
-- Frontend ESLint — no eslint config exists; the master plan §6.7's `pnpm lint` line was aspirational. Adding eslint is a feature add and the codebase (notably 30K-line `App.jsx`) would surface dozens of issues. Belongs in 6.8 alongside component decomposition.
-- Per-file thresholds for `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx` — these are the components 6.6 deliberately deferred. Their threshold entries land as 6.8 extracts and tests them.
-- The two latent `routes/segments.py` bugs from 6.5 (`func.literal`, date-range cast) — still `xfail(strict=True)`; flip to XPASS and force xfail-removal when 6.8 fixes them.
-- Backend route-module coverage — currently low because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task. Tests prove handler behavior via real DB state assertions but can't increase the line counter. Will resolve naturally in 6.8 when route handlers become thin shells calling extracted services (services get directly traced).
+**What is intentionally NOT yet enforced (tracked for Phase 7):**
+- Frontend ESLint — no eslint config exists; the master plan §6.7's `pnpm lint` line was aspirational. Adding eslint is a feature add and the codebase (notably 30K-line `App.jsx`) would surface dozens of issues. Belongs in Phase 7 alongside component decomposition.
+- Per-file thresholds for `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx` — these are the components 6.6 deliberately deferred. Their threshold entries land as Phase 7 extracts and tests them.
+- The two latent `routes/segments.py` bugs from 6.5 (`func.literal`, date-range cast) — still `xfail(strict=True)`; flip to XPASS and force xfail-removal when Phase 7 fixes them.
+- Backend route-module coverage — currently low because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task. Tests prove handler behavior via real DB state assertions but can't increase the line counter. Will resolve naturally in Phase 7 when route handlers become thin shells calling extracted services (services get directly traced).
 
-CI must be green before 6.8 begins — the refactor needs both the test suite and the automated gate.
+CI must be green before Phase 7 begins — the refactor needs both the test suite and the automated gate. **Phase 6 is now complete and Phase 7 inherits a working CI pipeline.**
 
-#### 6.8 OOP refactoring
-Refactor to proper OOP patterns under the 6.5–6.7 safety net. Current state is functional — route handlers with inline query logic, helper functions scattered. Target state:
-- **Service layer classes**: `SearchService`, `SessionService`, `LoaderService`, `SummaryService`
-- **Repository pattern**: `browser/backend/repositories/` — one per model
-- **Dependency injection**: services instantiated with repositories, injected via FastAPI `Depends()`
-- **Thin route handlers**: parse params, call service, return response. No query logic in routes.
-- **One class per file** per project conventions
-- Coverage target extended to 100% on service classes and repositories once they exist.
+**Deliverable (Phase 6):** Dead code removed. 333 backend pytest tests + 104 frontend vitest tests, all green. Ruff clean. GitHub Actions `ci.yml` (push + PR on main/staging/dev + manual dispatch) running lint/test/coverage-gate/build/docker-build. `release.yml` for manual semver bumps. Per-file coverage thresholds enforced. **Phase 6 is the safety net. Phase 7 is the restructure.**
 
-This is a refactor, not a rewrite. The test suite from 6.5–6.6 validates no behavior changes; CI enforces it. If any test fails during the refactor, the refactor is wrong — not the test.
+---
 
-**Known bugs flagged by Phase 6.5 — fix during the refactor:**
+### Phase 7 — OOP Restructure & Final Documentation
 
-Both are latent bugs in `routes/segments.py` that Phase 6.5's API integration tests surfaced. They're captured as `@pytest.mark.xfail(strict=True)` in `tests/test_api_segments.py`. When 6.8 fixes them, the strict markers flip to XPASS and fail the pipeline, forcing removal of the xfail decorators — that's the handoff signal.
+**Status: NEXT — the final phase.**
+
+**Goal:** Refactor the entire backend to proper OOP patterns (service layer + repository pattern + dependency injection). Decompose the over-coupled frontend into focused, individually tested components. Add ESLint to the frontend pipeline. Fix the two latent backend bugs flagged by Phase 6.5. Ratchet CI coverage gates toward 100% as decomposition lands. Finalize all documentation. **Project completes here.**
+
+**Why a separate phase rather than 6.8 / 6.9 sub-sections:** Phase 6 built the safety net (tests, lint, CI, coverage gates). Phase 7 is a *structural restructure* of the entire codebase under that safety net — it touches every backend module, every route handler, and most frontend components. The scope and risk profile of a service/repository extraction plus a 30K-LoC frontend god-component decomposition is qualitatively different from anything in Phase 6 and deserves its own phase boundary, its own planning, and its own commit history. Treating it as "6.8" understated the work; treating it as Phase 7 forces appropriate planning rigor.
+
+**Pre-condition:** Phase 6 CI pipeline green on `main`. Any test failure during Phase 7 means the refactor is wrong — not the test.
+
+**Execution order:** 7.1 (backend service + repository extraction) → 7.2 (latent bug fixes from 6.5) → 7.3 (frontend component decomposition + ESLint) → 7.4 (CI gate ratchet toward 100%) → 7.5 (final documentation).
+
+#### 7.1 Backend OOP refactor
+
+Refactor backend from functional route handlers with inline query logic into proper OOP patterns. Target state:
+
+- **Service layer classes**: `SearchService`, `SessionService`, `LoaderService`, `SummaryService`, `DashboardService`, `GraphService`. Each owns one bounded domain.
+- **Repository pattern**: `browser/backend/repositories/` — one repository per model (`SessionRepository`, `SegmentRepository`, `ToolCallRepository`, `SessionTopicRepository`, `ConceptRepository`, `SessionConceptRepository`, `SavedSearchRepository`). Repositories own SQL; services compose repository calls.
+- **Dependency injection**: services instantiated with repositories, injected into FastAPI route handlers via `Depends(get_search_service)` etc.
+- **Thin route handlers**: parse params, call service, return response. **Zero** query logic in routes.
+- **One class per file** per global CLAUDE.md conventions. `routes/segments.py` becomes a few-line file calling `SearchService.search(...)`; the heavy lifting moves into `services/search_service.py` and `repositories/session_repository.py`.
+- **Coverage target ratcheted to 100%** on service classes and repositories — they're directly testable (no httpx ASGITransport coverage gap).
+- **FastAPI `response_model`**: replace bare `-> dict` annotations on route handlers with Pydantic response models in `schemas.py`. Drives auto-generated OpenAPI docs and removes the placeholder annotations added in 6.7 ruff cleanup.
+
+This is a refactor, not a rewrite. The Phase 6 test suite validates no behavior changes; CI enforces it.
+
+#### 7.2 Latent bug fixes (XPASS handoff from Phase 6.5)
+
+Both bugs are in `routes/segments.py`, captured as `@pytest.mark.xfail(strict=True)` in `tests/test_api_segments.py`. When Phase 7.1 extracts the search service, fix the bugs at the same time. The strict xfail markers flip to XPASS and **fail the pipeline**, forcing removal of the xfail decorators — that's the handoff signal.
 
 1. **Filter-only search path crashes** — `routes/segments.py:~370`
    - Current code: `func.literal(1.0).label("best_rank")`
@@ -961,12 +985,31 @@ Both are latent bugs in `routes/segments.py` that Phase 6.5's API integration te
    - Fix: drop `.isoformat()` and pass `f.after`/`f.before` (date objects) directly — SQLAlchemy + asyncpg bind them correctly.
    - Test: `test_search_date_range_filter`
 
-#### 6.9 Update documentation
-- Update this master plan to reflect final architecture
-- Update README.md with testing section, CI badge, architecture diagram
-- Mark all Phase 6 rows complete in this document
+#### 7.3 Frontend component decomposition + ESLint
 
-**Deliverable:** No legacy code. OOP architecture with service/repository layers. Full test suite. GitHub Actions CI enforcing lint, tests, coverage, build, and Docker build. **Project complete.**
+The 30K-LoC `App.jsx` god component is the largest tech debt in the frontend. Phase 7.3 decomposes it and adds tests for the components Phase 6.6 deferred.
+
+- **Decompose `App.jsx`** into focused components: `Header`, `SearchBar`, `ProjectsPane`, `RequestsPane`, `ContentPane`, `MetadataPane`, `KeyboardShortcuts` (custom hook), `ResizeHandles` (custom hook). Each lives in its own file per OOP isolation rule. State management may move to a Zustand store if app-state lifting becomes painful.
+- **Add tests for the 6.6-deferred components**: `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx`. Per-file thresholds added to `vitest.config.js` as each lands.
+- **Export and test (or prune) the unreachable defensive branches** in `utils.js` (`sanitizeHtml` strip path) and `FilterChips.jsx` (`getOptionsForFilter` fallback) flagged in 6.6.
+- **Add ESLint** with `@eslint/js` recommended + `eslint-plugin-react` + `eslint-plugin-react-hooks`. Add `lint` script to `package.json`. Add `lint-frontend` job to `ci.yml` mirroring `lint-backend`. Fix all surfaced violations.
+
+#### 7.4 CI gate ratchet
+
+- Backend `--cov-fail-under` raised from 70% toward 100% as services/repositories replace inline route logic
+- Frontend per-file thresholds added/raised for each newly-tested component
+- `lint-frontend` job added (gated on the new ESLint config from 7.3)
+- Optional: coverage report uploaded to a coverage badge service (Codecov or Shields.io) for README badges
+
+#### 7.5 Final documentation
+
+- Update this master plan to reflect the post-7.1 service/repository architecture
+- Update §3 Mermaid module-dependency diagram for the new service + repository layout
+- Update README.md with: testing section, CI badges, post-restructure architecture diagram
+- Mark all Phase 7 sub-sections complete in this document
+- Final pass on §13 QA / UAT test plan to ensure every section reflects current behavior post-refactor
+
+**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% on service/repository code. Frontend decomposed with per-component test coverage. Two Phase 6.5-flagged bugs fixed. Documentation reflecting final architecture. **Project complete.**
 
 ---
 
@@ -980,9 +1023,10 @@ Both are latent bugs in `routes/segments.py` that Phase 6.5's API integration te
 | 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
-| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.7 done) | Dead code removed (6.1–6.4 ✅), backend test suite 333 tests + 2 flagged latent bugs for 6.8 (6.5 ✅), frontend test suite 104 vitest tests across 6 files with 4 unreachable defensive branches flagged for 6.8 (6.6 ✅), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7 ✅) → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
+| 6 — Cleanup, Testing & CI | ✅ Done | All 7 sub-phases shipped: dead code removed (6.1–6.4), 333 backend pytest tests with 2 latent bugs flagged for Phase 7 (6.5), 104 frontend vitest tests across 6 files with 4 unreachable defensive branches flagged for Phase 7 (6.6), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7). Safety net for Phase 7 in place. | Nothing | None (internal quality) |
+| 7 — OOP Restructure & Final Docs | ⏳ Next (final phase) | Backend service+repository extraction with Pydantic response_models (7.1), fix two Phase 6.5-flagged latent bugs via XPASS handoff (7.2), frontend component decomposition + ESLint + tests for 6.6-deferred components (7.3), CI coverage gates ratchet toward 100% (7.4), final documentation pass (7.5) | None (refactor under Phase 6 test/CI safety net — any test failure means the refactor is wrong) | App.jsx decomposed into focused components; per-file test coverage added across all components |
 
-Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**
+Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. **Phase 7 is the final phase: a full OOP restructure under that safety net, then project completion.**
 
 ---
 
@@ -1869,4 +1913,4 @@ Not formal benchmarks — just "does it feel right."
 - **Mermaid diagrams should stay current** — when a new component is added, update the module dependency graph.
 - **Every feature must justify itself** as: faster recall OR faster pattern understanding. If it doesn't, it's out of scope.
 - **Graceful degradation is sacred.** Every optional component (Graphify, embeddings, AI summaries) must have a working fallback.
-- **Phase 6 is the final phase.** After 6.5–6.9 land (tests → CI → OOP refactor → docs), the project is complete. No more features unless a concrete new use case justifies them.
+- **Phase 7 is the final phase.** After 7.1–7.5 land (backend OOP restructure → latent bug fixes → frontend decomposition + ESLint → CI gate ratchet → docs), the project is complete. No more features unless a concrete new use case justifies them.

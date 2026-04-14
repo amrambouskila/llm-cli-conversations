@@ -14,7 +14,7 @@ export default defineConfig({
       include: ["src/**/*.{js,jsx}"],
       exclude: ["src/__tests__/**", "src/main.jsx"],
       // Per-file gates for the modules covered by phase 6.6. Floors match
-      // current achievement minus a small fluctuation buffer. Phase 6.8
+      // current achievement minus a small fluctuation buffer. Phase 7
       // adds entries here as components get extracted and tested.
       thresholds: {
         "src/utils.js": { lines: 95, branches: 85, functions: 100 },

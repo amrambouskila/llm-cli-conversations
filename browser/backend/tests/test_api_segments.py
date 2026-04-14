@@ -145,7 +145,7 @@ async def test_search_tool_multi_value_filter(seed_sessions, api_client):
     reason="after:/before: filters generate `started_at >= 'YYYY-MM-DD'::varchar` — "
            "Postgres has no implicit cast from varchar to timestamptz. Pre-existing bug "
            "in routes/segments.py (`f.after.isoformat()` should be a date/datetime, not str). "
-           "Captured for Phase 6.8 to fix.",
+           "Captured for Phase 7 to fix.",
     strict=True,
 )
 async def test_search_date_range_filter(seed_sessions, api_client):
@@ -235,7 +235,7 @@ async def test_search_provider_filter(seed_sessions, api_client):
 @pytest.mark.xfail(
     reason="Filter-only search path uses func.literal(1.0) which generates SQL "
            "literal(1.0) — no such Postgres function. Pre-existing bug, captured here so "
-           "Phase 6.8 fixes it explicitly. See routes/segments.py line ~371.",
+           "Phase 7 fixes it explicitly. See routes/segments.py line ~371.",
     strict=True,
 )
 async def test_search_filter_only_path_crashes_xfail(seed_sessions, api_client):

@@ -11,7 +11,7 @@ from models import Segment, Session, ToolCall
 router = APIRouter()
 
 
-@router.get("/api/projects/{project_name}/segments")
+@router.get("/api/projects/{project_name}/segments", response_model=None)
 async def api_project_segments(
     project_name: str,
     show_hidden: bool = False,
@@ -80,7 +80,7 @@ async def api_project_segments(
     return result_list
 
 
-@router.get("/api/projects/{project_name}/conversation/{conversation_id}")
+@router.get("/api/projects/{project_name}/conversation/{conversation_id}", response_model=None)
 async def api_conversation_view(
     project_name: str,
     conversation_id: str,

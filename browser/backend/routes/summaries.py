@@ -362,7 +362,7 @@ async def api_conv_summary_get(project_name: str, conversation_id: str, db: Asyn
     return result
 
 
-@router.post("/api/summary/conversation/{project_name}/{conversation_id}")
+@router.post("/api/summary/conversation/{project_name}/{conversation_id}", response_model=None)
 async def api_conv_summary_request(
     project_name: str,
     conversation_id: str,
@@ -396,7 +396,7 @@ def api_summary_get(segment_id: str) -> dict:
     return _summary_status(segment_id)
 
 
-@router.post("/api/summary/{segment_id}")
+@router.post("/api/summary/{segment_id}", response_model=None)
 async def api_summary_request(
     segment_id: str,
     provider: str = "claude",

@@ -89,7 +89,7 @@ def test_every_extension_resolves_to_its_topic(ext, topic):
 
 def test_dockerfile_extension_unreachable_by_regex():
     """`.dockerfile` is in EXTENSION_TOPICS but FILE_PATH_RE caps at 6 chars
-    after the dot, so this entry is dead. Captured here so Phase 6.8 makes an
+    after the dot, so this entry is dead. Captured here so Phase 7 makes an
     explicit decision (widen regex or drop the entry)."""
     out = _file_extension_topics("a/path.dockerfile")
     assert "docker" not in out

@@ -68,8 +68,8 @@ jobs:
 
       - name: Pytest with coverage gate
         working-directory: browser/backend
-        # 70% gate matches the 6.5 floor (load.py ~76%); ratchet up in 6.8 as
-        # the OOP refactor decomposes route handlers into testable services.
+        # 70% gate matches the 6.5 floor (load.py ~76%); ratchet up in Phase 7
+        # as the OOP refactor decomposes route handlers into testable services.
         run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=70
 
       - name: Upload backend coverage
@@ -98,8 +98,9 @@ jobs:
 
       - name: Vitest with coverage gate
         # Per-file thresholds configured in vitest.config.js. The covered set
-        # is utils.js, SearchResults.jsx, FilterChips.jsx, App.jsx — the rest
-        # gets thresholds in 6.8 as components are extracted and tested.
+        # is utils.js, SearchResults.jsx, FilterChips.jsx, MetadataPanel.jsx,
+        # App.jsx — the rest gets thresholds in Phase 7 as components are
+        # extracted and tested.
         working-directory: browser/frontend
         run: npm run test:coverage
 

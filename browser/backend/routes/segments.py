@@ -75,7 +75,7 @@ async def api_segment_export(
     return JSONResponse({"error": "not found"}, status_code=404)
 
 
-@router.get("/api/segments/{segment_id}")
+@router.get("/api/segments/{segment_id}", response_model=None)
 async def api_segment_detail(
     segment_id: str,
     provider: str = "claude",
