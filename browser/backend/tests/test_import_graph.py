@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import select
-
 import import_graph
-from import_graph import _normalize_source, import_graph as run_import_graph
+from import_graph import _normalize_source
+from import_graph import import_graph as run_import_graph
 from models import Concept, SessionConcept, SessionTopic
+from sqlalchemy import select
 
 
 def test_normalize_source_strips_dir_and_ext():
