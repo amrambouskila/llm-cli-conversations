@@ -2,7 +2,7 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **Current phase: 6 (6.1–6.4 done, 6.5 next) — Phases 0-5 complete**
+> **Current phase: 6 (6.1–6.5 done, 6.6 next) — Phases 0-5 complete**
 >
 > Update the "Current phase" line above as each phase completes.
 
@@ -867,26 +867,17 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 - Invoked after initial `up --build -d` and inside the `[r]` restart branch
 - Replaces file-watch-based reindexing removed in 6.1
 
-#### 6.5 Unit + integration tests (backend)
-Add `pytest` + `pytest-asyncio` + `pytest-cov` in `browser/backend/tests/`.
+#### 6.5 Unit + integration tests (backend) ✅
 
-**Unit tests (mocked DB):**
-- `test_search.py` — `parse_query()` for every filter prefix, combined filters, malformed values, edge cases
-- `test_topics.py`, `test_classify.py` — heuristic extraction/classification
+**Status: COMPLETE**
 
-**Integration tests (real Postgres via testcontainer):**
-- `test_api_search.py`, `test_api_filters.py`, `test_api_related.py`
-- `test_api_projects.py`, `test_api_segments.py`, `test_api_conversations.py`
-- `test_api_visibility.py`, `test_api_stats.py`
-- `test_api_dashboard.py` — all dashboard endpoints
-- `test_load.py` — idempotent re-run verification
-- `test_embed.py` — embedding pipeline unit tests
-- `test_hybrid_search.py` — RRF fusion, scoring formula, community re-ranking
+**What was built:** 333 passing tests + 2 strict xfails across 12 files in `browser/backend/tests/` — pytest 8 + pytest-asyncio (auto mode, function loop scope) + pytest-cov + testcontainers (pgvector/pgvector:pg16, max_connections=500). 100% line coverage on `search.py`, `topics.py`, `classify.py`, `embed.py`, `models.py`; ~76% on `load.py` (uncovered = CLI main + JSONL metadata paths); route modules register lower because `pytest-cov` + httpx ASGITransport doesn't trace lines executed inside the ASGI task (tests prove handlers ran by asserting real DB state).
 
-**Test infrastructure:**
-- `conftest.py` — async test fixtures, Postgres testcontainer, deterministic test data seeding
-- Coverage target: **100%** on `search.py`, `topics.py`, `classify.py`, `embed.py`. `pragma: no cover` only on startup/lifespan glue.
-- Tests target the current functional route handlers so they capture pre-refactor behavior as the contract for 6.8.
+**Notable decisions:** (1) NullPool engine swap in `conftest.py` so every test loop gets fresh asyncpg connections — no cross-loop reuse errors; `db.async_session`, `load.async_session`, `import_graph.async_session` all re-pointed in the `db_engine` fixture. (2) `TESTCONTAINERS_RYUK_DISABLED=true` + `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` set at the top of `conftest.py` so the test runner can itself be a sibling container started via the host docker socket. (3) ONNX model never downloaded — `embed.embed_text`, `embed.Tokenizer`, `embed.ort.InferenceSession`, `embed.hf_hub_download` all monkeypatched; the deferred `from embed import embed_text` inside `_embed_new_sessions` and `api_search` picks up the patched value because the import statement executes at call time. (4) Two pre-existing production bugs in `routes/segments.py` (filter-only `func.literal`, date-range `timestamptz >= varchar`) captured as `@pytest.mark.xfail(strict=True)` — see §6.8 "Known bugs flagged by Phase 6.5" for the two-line fixes.
+
+**Test files:** `tests/test_smoke.py`, `test_search.py`, `test_topics.py`, `test_classify.py`, `test_embed.py`, `test_load.py`, `test_api_projects.py`, `test_api_segments.py`, `test_api_conversations.py`, `test_api_visibility.py`, `test_api_stats.py`, `test_api_filters.py`, `test_api_related.py`, `test_api_dashboard.py`, `test_hybrid_search.py`.
+
+**Infrastructure:** `browser/backend/requirements-dev.txt`, `browser/backend/pyproject.toml` (pytest + ruff + coverage config), `browser/backend/tests/conftest.py` (PG testcontainer, NullPool engine swap, autouse truncate, `seed_sessions` deterministic seed data, `api_client` ASGI test client with `get_db` override).
 
 #### 6.6 Frontend tests
 Add `vitest` + `@testing-library/react` in `browser/frontend/src/__tests__/`.
@@ -924,6 +915,24 @@ Refactor to proper OOP patterns under the 6.5–6.7 safety net. Current state is
 
 This is a refactor, not a rewrite. The test suite from 6.5–6.6 validates no behavior changes; CI enforces it. If any test fails during the refactor, the refactor is wrong — not the test.
 
+**Known bugs flagged by Phase 6.5 — fix during the refactor:**
+
+Both are latent bugs in `routes/segments.py` that Phase 6.5's API integration tests surfaced. They're captured as `@pytest.mark.xfail(strict=True)` in `tests/test_api_segments.py`. When 6.8 fixes them, the strict markers flip to XPASS and fail the pipeline, forcing removal of the xfail decorators — that's the handoff signal.
+
+1. **Filter-only search path crashes** — `routes/segments.py:~370`
+   - Current code: `func.literal(1.0).label("best_rank")`
+   - Generated SQL: `SELECT literal($1::FLOAT) AS best_rank` — Postgres has no `literal()` function.
+   - Impact: Any filter-only query (`project:conversations` alone, `model:opus` alone, etc. — see §13.4.3) returns 500.
+   - Fix: `from sqlalchemy import literal` (the compile-time builder, not `func.literal`) and use `literal(1.0).label("best_rank")`.
+   - Test: `test_search_filter_only_path_crashes_xfail`
+
+2. **Date range filters generate invalid cast** — `routes/segments.py:~245`
+   - Current code: `Session.started_at >= f.after.isoformat()` (and the matching `.before` line).
+   - `f.after` is a `datetime.date`; `.isoformat()` produces a `str`, which SQLAlchemy binds as VARCHAR. `Session.started_at` is `timestamptz`. Postgres has no implicit cast — produces `operator does not exist: timestamp with time zone >= character varying`.
+   - Impact: Any search using `after:` or `before:` filters returns 500, contradicting §13.1.12 and §13.4.3.
+   - Fix: drop `.isoformat()` and pass `f.after`/`f.before` (date objects) directly — SQLAlchemy + asyncpg bind them correctly.
+   - Test: `test_search_date_range_filter`
+
 #### 6.9 Update documentation
 - Update this master plan to reflect final architecture
 - Update README.md with testing section, CI badge, architecture diagram
@@ -943,7 +952,7 @@ This is a refactor, not a rewrite. The test suite from 6.5–6.6 validates no be
 | 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
-| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.4 done) | Dead code removed (6.1–6.4 ✅), full test suite (pytest + vitest) → GitHub Actions CI → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
+| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.5 done) | Dead code removed (6.1–6.4 ✅), backend test suite 333 tests + 2 flagged latent bugs for 6.8 (6.5 ✅), Vitest frontend next → GitHub Actions CI → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
 
 Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**
 
