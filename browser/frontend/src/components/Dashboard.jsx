@@ -239,11 +239,12 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
     const datasets = stackNames.map((name, i) => ({
       label: name,
       data: costOverTime.map((d) => d.stacks[name] || 0),
-      backgroundColor: STACK_COLORS[i % STACK_COLORS.length] + "88",
+      backgroundColor: STACK_COLORS[i % STACK_COLORS.length],
       borderColor: STACK_COLORS[i % STACK_COLORS.length],
-      borderWidth: 1,
-      fill: true,
+      borderWidth: 2,
+      fill: false,
       pointRadius: 0,
+      tension: 0.25,
     }));
     return { labels, datasets };
   }, [costOverTime]);
@@ -253,10 +254,10 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
     interaction: { mode: "index", intersect: false },
     scales: {
       ...defaultChartOptions.scales,
-      x: { ...defaultChartOptions.scales.x, stacked: true },
+      x: { ...defaultChartOptions.scales.x, stacked: false },
       y: {
         ...defaultChartOptions.scales.y,
-        stacked: true,
+        stacked: false,
         ticks: {
           ...defaultChartOptions.scales.y.ticks,
           callback: (v) => "$" + v.toFixed(2),
