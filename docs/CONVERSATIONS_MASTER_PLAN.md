@@ -2,7 +2,7 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **Current phase: 7 (Phase 6 ✅ complete — all 7 sub-phases done; Phase 7 next) — Phases 0-6 complete**
+> **Current phase: 7 — in progress. 7.1 ✅ + 7.2 ✅ + 7.4 (backend ratchet 70→90) ✅. Remaining: 7.3 (frontend decomposition + ESLint), 7.5 (cost audit + UI breakdown), 7.6 (final docs), plus the rest of 7.4 (95→100 ratchet).**
 >
 > Update the "Current phase" line above as each phase completes.
 
@@ -943,7 +943,7 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 ### Phase 7 — OOP Restructure & Final Documentation
 
-**Status: NEXT — the final phase.**
+**Status: IN PROGRESS. 7.1 ✅, 7.2 ✅, 7.4 backend ratchet ✅. 7.3, 7.5, 7.6, and 7.4 final ratchet still pending.**
 
 **Goal:** Refactor the entire backend to proper OOP patterns (service layer + repository pattern + dependency injection). Decompose the over-coupled frontend into focused, individually tested components. Add ESLint to the frontend pipeline. Fix the two latent backend bugs flagged by Phase 6.5. Ratchet CI coverage gates toward 100% as decomposition lands. Finalize all documentation. **Project completes here.**
 
@@ -953,37 +953,40 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 **Execution order:** 7.1 (backend service + repository extraction) → 7.2 (latent bug fixes from 6.5) → 7.3 (frontend component decomposition + ESLint) → 7.4 (CI gate ratchet toward 100%) → 7.5 (cost calculation audit + UI breakdown) → 7.6 (final documentation).
 
-#### 7.1 Backend OOP refactor
+#### 7.1 Backend OOP refactor ✅
 
-Refactor backend from functional route handlers with inline query logic into proper OOP patterns. Target state:
+**Status: COMPLETE (2026-04-14).**
 
-- **Service layer classes**: `SearchService`, `SessionService`, `LoaderService`, `SummaryService`, `DashboardService`, `GraphService`. Each owns one bounded domain.
-- **Repository pattern**: `browser/backend/repositories/` — one repository per model (`SessionRepository`, `SegmentRepository`, `ToolCallRepository`, `SessionTopicRepository`, `ConceptRepository`, `SessionConceptRepository`, `SavedSearchRepository`). Repositories own SQL; services compose repository calls.
-- **Dependency injection**: services instantiated with repositories, injected into FastAPI route handlers via `Depends(get_search_service)` etc.
-- **Thin route handlers**: parse params, call service, return response. **Zero** query logic in routes.
-- **One class per file** per global CLAUDE.md conventions. `routes/segments.py` becomes a few-line file calling `SearchService.search(...)`; the heavy lifting moves into `services/search_service.py` and `repositories/session_repository.py`.
-- **Coverage target ratcheted to 100%** on service classes and repositories — they're directly testable (no httpx ASGITransport coverage gap).
-- **FastAPI `response_model`**: replace bare `-> dict` annotations on route handlers with Pydantic response models in `schemas.py`. Drives auto-generated OpenAPI docs and removes the placeholder annotations added in 6.7 ruff cleanup.
+Refactored backend from functional route handlers with inline query logic into proper OOP patterns. Shipped state:
 
-This is a refactor, not a rewrite. The Phase 6 test suite validates no behavior changes; CI enforces it.
+- **Service layer classes** at `browser/backend/services/`: `SearchService`, `SessionService`, `DashboardService`, `GraphService`, `ProjectService`, `StatsService`, `SummaryService` (7 total). Each owns one bounded domain.
+- **Repository pattern** at `browser/backend/repositories/` — one repository per model: `SessionRepository`, `SegmentRepository`, `ToolCallRepository`, `SessionTopicRepository`, `ConceptRepository` (5 total; `SavedSearchRepository` not yet exposed — saved searches feature is planned but no routes consume it). `ConceptRepository` also owns `SessionConcept` queries since they only ever appear alongside concepts.
+- **Shared filter helper** at `services/_filter_scope.py` — `SessionFilterScope` dataclass that compiles a `SearchFilters` object into SQL `WHERE` clauses + optional tool/topic subqueries once per request, then applies them to any query via `.apply(stmt)`. Phase 7.2 date-range bug fix lives here.
+- **Dependency injection** wired in `db.py`: one `get_*_repository` provider per repo + one `get_*_service` provider per service, chained via `Depends()`.
+- **Thin route handlers**: every `routes/*.py` file is now a shell — parse query params, call `service.method()`, return the result. Zero query logic in routes.
+- **Pydantic `response_model`** applied to every endpoint — response shapes defined in `schemas.py` (e.g., `SessionSearchResult`, `DashboardSummary`, `VisibilityResponse`, `HiddenStateDetail`). Replaces the placeholder `-> dict` annotations added in 6.7 ruff cleanup. Drives OpenAPI docs auto-generation.
 
-#### 7.2 Latent bug fixes (XPASS handoff from Phase 6.5)
+**Notable decisions:** (1) `DashboardService` queries `AsyncSession` directly instead of going through per-model repositories — its 9 aggregations are one-off view shapes that would only bloat the repo layer. (2) `GraphService` references `GRAPHIFY_OUT` via `services.dashboard_service` module attribute (not `from X import Y`) so a single monkeypatch in tests covers both services. (3) `SearchService._community_boost` extracts the pure scoring logic into `_compute_community_boosts(communities_by_session, scored)` so the test-facing `_community_rerank(db, scored)` shim and the production service method share the same math without duplicating the loop.
 
-Both bugs are in `routes/segments.py`, captured as `@pytest.mark.xfail(strict=True)` in `tests/test_api_segments.py`. When Phase 7.1 extracts the search service, fix the bugs at the same time. The strict xfail markers flip to XPASS and **fail the pipeline**, forcing removal of the xfail decorators — that's the handoff signal.
+**Test state:** 621/621 pass; total coverage 94.56% (gate 90%). 179 new tests across 12 files: `tests/repositories/test_{session,segment,tool_call,session_topic,concept}_repository.py` (74 tests) + `tests/services/test_{filter_scope,search,session,dashboard,graph,project,stats,summary}_service.py` (105 tests).
 
-1. **Filter-only search path crashes** — `routes/segments.py:~370`
-   - Current code: `func.literal(1.0).label("best_rank")`
-   - Generated SQL: `SELECT literal($1::FLOAT) AS best_rank` — Postgres has no `literal()` function.
-   - Impact: Any filter-only query (`project:conversations` alone, `model:opus` alone, etc. — see §13.4.3) returns 500.
-   - Fix: `from sqlalchemy import literal` (the compile-time builder, not `func.literal`) and use `literal(1.0).label("best_rank")`.
-   - Test: `test_search_filter_only_path_crashes_xfail`
+#### 7.2 Latent bug fixes (XPASS handoff from Phase 6.5) ✅
 
-2. **Date range filters generate invalid cast** — `routes/segments.py:~245`
-   - Current code: `Session.started_at >= f.after.isoformat()` (and the matching `.before` line).
-   - `f.after` is a `datetime.date`; `.isoformat()` produces a `str`, which SQLAlchemy binds as VARCHAR. `Session.started_at` is `timestamptz`. Postgres has no implicit cast — produces `operator does not exist: timestamp with time zone >= character varying`.
-   - Impact: Any search using `after:` or `before:` filters returns 500, contradicting §13.1.12 and §13.4.3.
-   - Fix: drop `.isoformat()` and pass `f.after`/`f.before` (date objects) directly — SQLAlchemy + asyncpg bind them correctly.
-   - Test: `test_search_date_range_filter`
+**Status: COMPLETE (2026-04-14). Both decorators removed; tests pass as normal.**
+
+1. **Filter-only search path crashes** — was `routes/segments.py:379`
+   - Old: `func.literal(1.0).label("best_rank")` — `func.literal()` isn't a Postgres function, UndefinedFunctionError on any text-less query.
+   - Fix: `SessionRepository.search_filter_only_top_sessions()` returns plain session IDs with no synthetic rank column; `SearchService._filter_only_retrieval()` assigns `rank=1.0` in Python via `dict.fromkeys(...)`.
+   - Test: `test_search_filter_only_path` (renamed from `_crashes_xfail`, now passes).
+
+2. **Date range filters generate invalid cast** — was `routes/segments.py:252, 254`
+   - Old: `Session.started_at >= f.after.isoformat()` → `timestamptz >= varchar`, no implicit cast in Postgres.
+   - Fix lives in `services/_filter_scope.py` `SessionFilterScope.build()`: `Session.started_at >= filters.after` (date object passed directly) and `Session.started_at < filters.before + timedelta(days=1)` (exclusive upper bound via timedelta arithmetic).
+   - Test: `test_search_date_range_filter` (xfail decorator removed).
+
+3. **Cleanup**: `test_search_combined_filters` restored its `after:2026-01-01` clause (previously dropped with a workaround docstring pointing at the xfail above).
+
+Live-stack verification (post-`docker compose up --build`): `project:IMPORTANT-Projects-conversations` returns 20 results; `after:2026-03-01 before:2026-04-14` returns 50 results — both formerly 500s now 200s.
 
 #### 7.3 Frontend component decomposition + ESLint
 
@@ -996,9 +999,11 @@ The 633-line `App.jsx` god component (with 22 `useState` hooks, 10 `useEffect` b
 
 #### 7.4 CI gate ratchet
 
-- Backend `--cov-fail-under` raised from 70% toward 100% as services/repositories replace inline route logic
-- Frontend per-file thresholds added/raised for each newly-tested component
-- `lint-frontend` job added (gated on the new ESLint config from 7.3)
+- ✅ **Backend `--cov-fail-under` 70 → 90** landed with 7.1. Total coverage 94.56% because services + repositories are directly traced (the httpx ASGITransport limitation that capped Phase 6.7 at 70% was about routes, not services — route handlers became thin shells in 7.1 so the issue resolves naturally).
+- ⏳ Backend `--cov-fail-under` 90 → 95 after 7.5 cost tests land
+- ⏳ Backend `--cov-fail-under` 95 → 100 on `services/` + `repositories/` specifically (final gate)
+- ⏳ Frontend per-file thresholds added for each newly-tested component (lands with 7.3)
+- ⏳ `lint-frontend` job added (gated on the new ESLint config from 7.3)
 - Optional: coverage report uploaded to a coverage badge service (Codecov or Shields.io) for README badges
 
 #### 7.5 Cost calculation audit + UI breakdown (user-reported anomaly)
@@ -1098,7 +1103,7 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
 | 6 — Cleanup, Testing & CI | ✅ Done | All 7 sub-phases shipped: dead code removed (6.1–6.4), 333 backend pytest tests with 2 latent bugs flagged for Phase 7 (6.5), 104 frontend vitest tests across 6 files with 4 unreachable defensive branches flagged for Phase 7 (6.6), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7). Safety net for Phase 7 in place. | Nothing | None (internal quality) |
-| 7 — OOP Restructure, Cost Audit & Final Docs | ⏳ Next (final phase) | Backend service+repository extraction with Pydantic response_models (7.1), fix two Phase 6.5-flagged latent bugs via XPASS handoff (7.2), frontend component decomposition + ESLint + tests for 6.6-deferred components (7.3), CI coverage gates ratchet toward 100% (7.4), cost calculation audit + UI breakdown (7.5), final documentation pass (7.6) | None (refactor under Phase 6 test/CI safety net — any test failure means the refactor is wrong; cost audit may slightly adjust `estimated_cost` values if cache-write premium lands) | App.jsx decomposed into focused components; per-file test coverage added across all components; cost-breakdown bar added to Dashboard and MetadataPanel; "Top 5 most expensive sessions" widget |
+| 7 — OOP Restructure, Cost Audit & Final Docs | ⏳ In progress — 7.1 + 7.2 + 7.4(partial) ✅; 7.3/7.5/7.6 pending | **SHIPPED:** backend service+repository extraction with 7 services + 5 repositories + DI wiring + Pydantic response_models on every route (7.1); two Phase 6.5-flagged latent bugs fixed via XPASS handoff, decorators removed, live-verified (7.2); backend coverage gate 70→90 with total coverage at 94.56% (7.4 initial); 621 total tests (+179 dedicated service/repository tests across 12 new files). **PENDING:** frontend decomposition + ESLint + tests for 6.6-deferred components (7.3), cost audit + UI breakdown (7.5), backend gate 90→95→100 + frontend per-file thresholds + `lint-frontend` CI job (7.4 remainder), final documentation pass (7.6) | None (refactor under Phase 6 test/CI safety net — 442→621 pass end-to-end; Phase 7.5 cost audit will slightly adjust `estimated_cost` values when cache-write premium lands) | Unchanged so far (7.3 will decompose App.jsx; 7.5 will add cost-breakdown bar + Top-5 widget) |
 
 Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. **Phase 7 is the final phase: a full OOP restructure under that safety net, then project completion.**
 

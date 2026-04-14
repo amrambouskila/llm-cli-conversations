@@ -1,4 +1,4 @@
-"""Unit + integration tests for hybrid search helpers in routes.segments.
+"""Unit + integration tests for hybrid search helpers in services.search_service.
 
 Covers every ranking helper per DESIGN.md §3 / master plan §7:
   * _rrf_merge — reciprocal rank fusion with [0, 1] normalization
@@ -22,7 +22,7 @@ from sqlalchemy import update
 
 import embed
 from models import Concept, Session, SessionConcept
-from routes.segments import (
+from services.search_service import (
     COMMUNITY_BOOST_COEFFICIENT,
     _community_rerank,
     _exact_match_bonus,

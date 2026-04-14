@@ -16,6 +16,7 @@ Thumbs.db
 # Claude state (project-tracked .claude/commands etc. are explicitly committed)
 .claude/settings.local.json
 CLAUDE.local.md
+.claude/*.lock
 
 # Python
 .venv/

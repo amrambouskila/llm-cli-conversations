@@ -68,9 +68,11 @@ jobs:
 
       - name: Pytest with coverage gate
         working-directory: browser/backend
-        # 70% gate matches the 6.5 floor (load.py ~76%); ratchet up in Phase 7
-        # as the OOP refactor decomposes route handlers into testable services.
-        run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=70
+        # 90% gate landed in Phase 7.1: services + repositories are directly
+        # traced (unlike route handlers under httpx ASGITransport), so extraction
+        # lifted total coverage from 76% to 93%. Ratchet to 95% after 7.5 cost
+        # tests land; 100% on services/ + repositories/ is the final target.
+        run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=90
 
       - name: Upload backend coverage
         if: always()

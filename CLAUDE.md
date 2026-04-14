@@ -68,7 +68,7 @@ Raw JSONL (Claude/Codex CLI)
 
 ## Current State
 
-The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 6 of the v2 migration are complete:
+The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 6 of the v2 migration are complete; Phase 7 is in progress (7.1 + 7.2 + initial 7.4 shipped):
 
 - **Phase 0 (done):** PostgreSQL 16 with pgvector running in Docker Compose. Backend split into modular routes. SQLAlchemy 2.0 async models define the `conversations` schema (7 tables). Pydantic v2 schemas ready for API layer. Database initialized on app startup via `init_db()`.
 - **Phase 1 (done):** Data loader pipeline (`load.py`) populates Postgres from parsed markdown + raw JSONL metadata. Heuristic topic extraction and session type classification. Graphify concept graph import (via `graphifyy` package). Wired into `/api/update`, watch loop, and app startup.
@@ -77,13 +77,21 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 - **Phase 4 (done):** KPI dashboard with 6 chart types (Chart.js), activity heatmap (custom SVG), anomaly table, global filters with click-to-filter. Knowledge graph in its own full-screen tab (d3 force-directed layout with interactive settings panel, `localStorage` persistence). Automated concept extraction pipeline (`graph_extract.py` via `claude -p --system-prompt` + graphifyy clustering) auto-starts on service launch. New files: `routes/dashboard.py`, `Dashboard.jsx`, `Heatmap.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `graph_extract.py`, `graph_watcher.bat`.
 - **Phase 5 (done):** Hybrid semantic + keyword search. `embed.py` loads `sentence-transformers/all-MiniLM-L6-v2` via ONNX Runtime (downloaded on first run, ~90MB, cached). `load.py` incrementally embeds sessions where `embedding IS NULL`. `api_search` runs tsvector + vector legs, merges via Reciprocal Rank Fusion (k=60, normalized to [0,1]), then applies `0.6*rrf + 0.2*recency + 0.1*length + 0.1*exact_match` scoring. Optional community re-ranking boosts sessions sharing Leiden communities with the top result (`+0.05 * overlap_count`). Relevance bar per result card, two-part status badges (Hybrid/Keyword + Graph/No Graph) in the search bar, `/api/search/status` endpoint for polling. Timestamped launcher logs. New files: `browser/backend/embed.py`. New dependencies: `onnxruntime`, `tokenizers`, `huggingface-hub`, `numpy` + `libgomp1` system package in Dockerfile.
 - **Phase 6 (done):** Test + CI safety net for the Phase 7 restructure. Dead code removed: `index_store.py`, `state.py`, `INDEX`/`CODEX_INDEX` globals, `WATCH_INTERVAL`, `_watch_loop` (6.1-6.2). Docker volume narrowed to `browser_state/summaries` only (6.3). Launcher scripts (`export_service.sh`, `.bat`) gained `sync_postgres` helper and `[r]` restart loop with full parity (6.4). Backend: 348 pytest tests across 20 files via pytest-asyncio + testcontainers/pgvector + NullPool engine swap + deterministic seed fixtures (6.5). Frontend: 104 vitest tests across 6 files via jsdom + @testing-library/react + @testing-library/user-event (6.6). Two pre-existing bugs in `routes/segments.py` (`func.literal(1.0)` at line 379, and date `.isoformat()` cast at lines 252/254) captured as `xfail(strict=True)` for Phase 7 XPASS handoff. GitHub Actions `ci.yml` (lint-backend → test-backend → test-frontend → build-frontend → docker-build on main/staging/dev + PR + manual dispatch, per-ref concurrency, `--cov-fail-under=70` backend gate, per-file frontend thresholds in `vitest.config.js`). `release.yml` for manual semver bumps of `browser/frontend/package.json`. Ruff fully green after 272-error cleanup (6.7).
+- **Phase 7 (in progress):**
+  - **7.1 (done):** Backend OOP restructure. New `browser/backend/services/` tree with 7 service classes (`SearchService`, `SessionService`, `DashboardService`, `GraphService`, `ProjectService`, `StatsService`, `SummaryService`) + shared `SessionFilterScope` helper in `services/_filter_scope.py`. New `browser/backend/repositories/` tree with 5 repositories (`SessionRepository`, `SegmentRepository`, `ToolCallRepository`, `SessionTopicRepository`, `ConceptRepository`). `db.py` gained FastAPI DI providers chaining repos → services → routes. Every route handler in `browser/backend/routes/` is now a thin shell calling `Depends(get_*_service)`. Pydantic `response_model=` applied to every endpoint with shapes defined in `schemas.py` (`SessionSearchResult`, `DashboardSummary`, `VisibilityResponse`, `HiddenStateDetail`, etc.).
+  - **7.2 (done):** Both Phase 6.5 `xfail(strict=True)` bugs fixed in the same commit as `SearchService` extraction. `func.literal(1.0)` replaced with explicit Python rank assignment in `SearchService._filter_only_retrieval`. Date filters pass `date` objects directly via `Session.started_at >= filters.after` + `Session.started_at < filters.before + timedelta(days=1)` in `SessionFilterScope.build`. Strict XPASS handoff complete: both decorators removed, tests pass as normal.
+  - **7.4 partial (done):** Backend `--cov-fail-under` raised 70 → 90 in `pyproject.toml` and `ci.yml`. Total coverage now **94.56%** (up from 76%) because services + repositories are directly traced by pytest-cov.
+  - **7.3 (pending):** `App.jsx` decomposition + ESLint + tests for 6.6-deferred components.
+  - **7.5 (pending):** Cost audit (`CACHE_WRITE_PREMIUM_5M = 1.25`), 4-way cost-breakdown UI, Top-5 expensive sessions widget, `$644` investigation.
+  - **7.6 (pending):** Final documentation pass, `docs/status.md` + `docs/versions.md` creation, README.md updates.
+  - **Test state post-7.1/7.2/7.4(partial):** 621/621 pass (333 pre-Phase-7 + 179 new dedicated service/repo tests + 109 existing integration tests). 12 new test files under `tests/services/` and `tests/repositories/`. Ruff clean.
 
-### Next: v2 Upgrade Phase 7 (final phase)
+### Next: v2 Upgrade Phase 7 (final phase — partially shipped)
 
 - @DESIGN.md — product direction, schema, dashboard spec, anti-bloat guardrails
 - @docs/CONVERSATIONS_MASTER_PLAN.md — **single source of truth** for product direction, architectural decisions, phased migration (Phases 0-7), phase summary table, anti-bloat guardrails, and the full QA/UAT test plan. Supersedes the old `PLAN.md` and `docs/test_plan.md`.
 
-**When working on v2:** Follow the master plan's phases in order (0 → 1 → 2 → 3 → 4 → 5 → 6 → 7). Do not skip ahead — each phase depends on the previous one. Check which phase is current (see the "Current phase" line at the top of the master plan) before starting work. Each phase must produce a working system before moving to the next. **Phase 6 is complete (test + CI safety net). Phase 7 (OOP restructure + final docs) is the final phase.**
+**When working on v2:** Follow the master plan's phases in order (0 → 1 → 2 → 3 → 4 → 5 → 6 → 7). Do not skip ahead — each phase depends on the previous one. Check which phase is current (see the "Current phase" line at the top of the master plan) before starting work. Each phase must produce a working system before moving to the next. **Phases 0-6 complete. Phase 7 in progress: 7.1 (backend OOP) + 7.2 (latent bug fixes) + initial 7.4 (coverage gate 70→90) shipped; 7.3 (frontend decomposition + ESLint), 7.5 (cost audit + UI breakdown), 7.6 (final docs), and remainder of 7.4 still pending.**
 
 ### v1 Targets (all complete)
 
@@ -107,9 +115,14 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 ### v2 Targets (Project Completion)
 
 - [x] Dead code removal (Phase 6.1-6.2 — `index_store.py`, `state.py`, `INDEX`, `CODEX_INDEX`, `WATCH_INTERVAL`, `_watch_loop` all removed)
-- [ ] OOP refactoring: service layer + repository pattern (Phase 7.1)
-- [x] Full unit + integration test suite (Phase 6.5-6.6 — 348 pytest + 104 vitest across 26 files)
+- [x] OOP refactoring: service layer + repository pattern (Phase 7.1 — 7 services, 5 repositories, DI wiring, Pydantic response_models on every route)
+- [x] Latent bug fixes: `func.literal(1.0)` + date-range cast (Phase 7.2 — XPASS handoff complete)
+- [x] Full unit + integration test suite (Phase 6.5-6.6 — 348 pytest + 104 vitest across 26 files; Phase 7.1 added 179 more in 12 files → 621 total)
 - [x] GitHub Actions CI pipeline (Phase 6.7 — `ci.yml` with lint/test/coverage/build/docker-build, `release.yml` for semver bumps)
+- [x] Backend coverage gate 70→90 (Phase 7.4 partial — at 94.56%)
+- [ ] Frontend decomposition + ESLint + tests for 9 deferred components (Phase 7.3)
+- [ ] Cost calculation audit + UI breakdown (Phase 7.5 — cache_write premium, 4-way breakdown, Top-5 widget)
+- [ ] Final documentation pass (Phase 7.6 — `docs/status.md`, `docs/versions.md`, README updates)
 
 ## Development
 

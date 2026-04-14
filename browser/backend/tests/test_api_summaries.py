@@ -1,11 +1,16 @@
-"""Tests for routes/summaries.py — summary orchestration and file-based watcher handoff."""
+"""Tests for the summary orchestration state machine and API routes.
+
+Helpers (``_parse_summary_file``, ``_advance_conv_summary``, etc.) and
+``SUMMARIES_DIR`` moved from ``routes/summaries.py`` to
+``services/summary_service.py`` during the Phase 7.1 OOP refactor.
+"""
 from __future__ import annotations
 
 import json
 
 import pytest
 
-from routes import summaries as summaries_mod
+from services import summary_service as summaries_mod
 
 
 @pytest.fixture(autouse=True)

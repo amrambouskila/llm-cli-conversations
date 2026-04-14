@@ -204,7 +204,7 @@ async def test_graph_returns_nodes_and_edges_with_concepts(seed_sessions, api_cl
 
 
 async def test_graph_status_no_data(seed_sessions, api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     response = await api_client.get("/api/dashboard/graph/status")
     assert response.status_code == 200
     data = response.json()
@@ -214,7 +214,7 @@ async def test_graph_status_no_data(seed_sessions, api_client, monkeypatch, tmp_
 
 
 async def test_graph_status_generating_with_progress(seed_sessions, api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     (tmp_path / ".generate_requested").write_text("1")
     (tmp_path / ".progress").write_text(json.dumps({
         "done": 5, "total": 10, "current": "file.md", "ok": 4, "failed": 1, "model": "opus",
@@ -227,14 +227,14 @@ async def test_graph_status_generating_with_progress(seed_sessions, api_client, 
 
 
 async def test_graph_status_ready(seed_sessions, api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     (tmp_path / "graph.json").write_text("{}")
     data = (await api_client.get("/api/dashboard/graph/status")).json()
     assert data["status"] == "ready"
 
 
 async def test_graph_generate_writes_trigger_files(api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     response = await api_client.post("/api/dashboard/graph/generate")
     assert response.status_code == 200
     assert response.json() == {"status": "generating"}
@@ -243,7 +243,7 @@ async def test_graph_generate_writes_trigger_files(api_client, monkeypatch, tmp_
 
 
 async def test_graph_import_no_file(api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     response = await api_client.post("/api/dashboard/graph/import")
     assert response.status_code == 200
     body = response.json()
@@ -252,7 +252,7 @@ async def test_graph_import_no_file(api_client, monkeypatch, tmp_path):
 
 
 async def test_graph_import_with_minimal_graph_json(seed_sessions, api_client, monkeypatch, tmp_path):
-    monkeypatch.setattr("routes.dashboard.GRAPHIFY_OUT", tmp_path)
+    monkeypatch.setattr("services.dashboard_service.GRAPHIFY_OUT", tmp_path)
     minimal = {
         "nodes": [
             {"id": "n1", "label": "docker", "source_file": "/anywhere/conversations.md"},

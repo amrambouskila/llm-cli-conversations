@@ -20,6 +20,6 @@ omit = ["tests/*", "convert_*.py"]
 concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 90
 show_missing = true
 skip_empty = true

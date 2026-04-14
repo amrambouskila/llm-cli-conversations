@@ -85,7 +85,8 @@ def neutralize_markers(text: str) -> str:
 
 def clean_project_name(name: str) -> str:
     """Convert path-based project names to readable form.
-    e.g. '-Users-amrambouskila-IMPORTANT-Projects-oft' -> 'IMPORTANT-Projects-oft'
+    e.g. '-Users-EXAMPLE_USER-IMPORTANT-Projects-oft' -> 'IMPORTANT-Projects-oft'
+    (EXAMPLE_USER is a placeholder — the real value is derived from $HOME at runtime)
 
     Works both on the host and inside Docker by detecting the home prefix
     pattern from the name itself, not from the runtime HOME directory.

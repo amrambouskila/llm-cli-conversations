@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import UTC
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # /api/projects/{p}/segments
 # ---------------------------------------------------------------------------
@@ -141,14 +139,8 @@ async def test_search_tool_multi_value_filter(seed_sessions, api_client):
         assert ("Bash" in r["tools"]) or ("Edit" in r["tools"])
 
 
-@pytest.mark.xfail(
-    reason="after:/before: filters generate `started_at >= 'YYYY-MM-DD'::varchar` — "
-           "Postgres has no implicit cast from varchar to timestamptz. Pre-existing bug "
-           "in routes/segments.py (`f.after.isoformat()` should be a date/datetime, not str). "
-           "Captured for Phase 7 to fix.",
-    strict=True,
-)
 async def test_search_date_range_filter(seed_sessions, api_client):
+    """Phase 7.2 fix: filters pass `date` objects directly, not `.isoformat()` strings."""
     response = await api_client.get(
         "/api/search", params={"q": "after:2026-03-15 before:2026-04-30 docker"}
     )
@@ -179,16 +171,18 @@ async def test_search_turns_threshold(seed_sessions, api_client):
 
 
 async def test_search_combined_filters(seed_sessions, api_client):
-    """Same combined filters, but without the after: clause (which crashes — see xfail above)."""
+    """Phase 7.2: all four filters (project, tool, date, free text) compose cleanly."""
     response = await api_client.get(
         "/api/search",
-        params={"q": "project:conversations tool:Edit refactor"},
+        params={"q": "project:conversations tool:Edit after:2026-01-01 refactor"},
     )
     assert response.status_code == 200
     data = response.json()
     for r in data:
         assert r["project"] == "conversations"
         assert "Edit" in r["tools"]
+        if r["date"]:
+            assert r["date"] >= "2026-01-01"
 
 
 async def test_search_model_filter(seed_sessions, api_client):
@@ -232,19 +226,21 @@ async def test_search_provider_filter(seed_sessions, api_client):
             assert r["project"] == "oft"
 
 
-@pytest.mark.xfail(
-    reason="Filter-only search path uses func.literal(1.0) which generates SQL "
-           "literal(1.0) — no such Postgres function. Pre-existing bug, captured here so "
-           "Phase 7 fixes it explicitly. See routes/segments.py line ~371.",
-    strict=True,
-)
-async def test_search_filter_only_path_crashes_xfail(seed_sessions, api_client):
-    """Filter-only queries crash with UndefinedFunctionError. Master plan §13.4.3
-    expects this to work (`model:opus project:conversations` filter-only) — it doesn't."""
+async def test_search_filter_only_path(seed_sessions, api_client):
+    """Phase 7.2 fix: filter-only queries (no free text) return sessions by recency.
+
+    Master plan §13.4.3 expects `project:conversations` alone to return results.
+    Previously crashed with UndefinedFunctionError because the path used
+    `func.literal(1.0)` which translates to a nonexistent Postgres `literal()`.
+    """
     response = await api_client.get(
         "/api/search", params={"q": "project:conversations"}
     )
     assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    for r in data:
+        assert r["project"] == "conversations"
 
 
 # ---------------------------------------------------------------------------

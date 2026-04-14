@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Read(/Users/amrambouskila/IMPORTANT/Projects/conversations/**)"
+      "Read(./**)"
     ]
   },
   "hooks": {
