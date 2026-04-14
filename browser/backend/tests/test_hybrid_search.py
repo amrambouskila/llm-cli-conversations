@@ -13,15 +13,12 @@ Covers every ranking helper per DESIGN.md §3 / master plan §7:
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 import pytest_asyncio
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import embed
 from models import Concept, Session, SessionConcept
@@ -33,7 +30,6 @@ from routes.segments import (
     _recency_boost,
     _rrf_merge,
 )
-
 
 # ---------------------------------------------------------------------------
 # _rrf_merge
@@ -104,31 +100,31 @@ def test_rrf_merge_normalized_values_in_unit_range():
 # ---------------------------------------------------------------------------
 
 def test_recency_boost_none_is_zero():
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     assert _recency_boost(None, now) == 0.0
 
 
 def test_recency_boost_today_is_one():
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     assert _recency_boost(now, now) == pytest.approx(1.0)
 
 
 def test_recency_boost_30_days_ago():
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     started = now - timedelta(days=30)
     expected = 1.0 / (1.0 + math.log(2.0))  # days/30 == 1 → log(1+1) = log 2
     assert _recency_boost(started, now) == pytest.approx(expected)
 
 
 def test_recency_boost_1000_days_ago_is_small_but_positive():
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     started = now - timedelta(days=1000)
     boost = _recency_boost(started, now)
     assert 0.0 < boost < 0.3  # log decay but never negative
 
 
 def test_recency_boost_monotonically_decreases_with_age():
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     b_today = _recency_boost(now, now)
     b_week = _recency_boost(now - timedelta(days=7), now)
     b_month = _recency_boost(now - timedelta(days=30), now)
@@ -138,7 +134,7 @@ def test_recency_boost_monotonically_decreases_with_age():
 
 def test_recency_boost_future_timestamp_clamped_to_zero_days():
     """Future `started_at` must not produce > 1.0 or a negative log input."""
-    now = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 1, tzinfo=UTC)
     future = now + timedelta(days=10)
     boost = _recency_boost(future, now)
     assert boost == pytest.approx(1.0)
@@ -405,7 +401,7 @@ async def test_hidden_sessions_excluded_from_results(seed_sessions, api_client, 
 async def test_final_score_formula_weights(api_client, fake_embed_text, db_session):
     """Craft a single-session scenario where rrf=1, recency=1, length=1, exact=1 →
     final score = 0.6 + 0.2 + 0.1 + 0.1 = 1.0."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Start fresh: no existing rows beyond the truncate
     sess = Session(

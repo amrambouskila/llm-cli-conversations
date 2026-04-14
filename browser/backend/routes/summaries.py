@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -66,7 +65,7 @@ def _request_summary(key: str, markdown: str) -> dict:
     return {"status": "pending", "title": None, "summary": ""}
 
 
-def _read_summary_body(key: str) -> Optional[str]:
+def _read_summary_body(key: str) -> str | None:
     """Return a child summary as a single string (title prepended), or None
     if it isn't ready yet."""
     md_file = SUMMARIES_DIR / f"{key}.md"
@@ -130,7 +129,7 @@ def _conv_state_path(key: str) -> Path:
     return SUMMARIES_DIR / f"{key}.state.json"
 
 
-def _load_conv_state(key: str) -> Optional[dict]:
+def _load_conv_state(key: str) -> dict | None:
     p = _conv_state_path(key)
     if not p.exists():
         return None
@@ -148,7 +147,7 @@ def _save_conv_state(key: str, state: dict) -> None:
     os.replace(tmp, target)
 
 
-def _conv_progress(state: Optional[dict]) -> dict:
+def _conv_progress(state: dict | None) -> dict:
     if state is None:
         return {"phase": "starting", "done": 0, "total": 0, "level": 0}
     phase = state.get("phase")
@@ -168,7 +167,7 @@ def _conv_progress(state: Optional[dict]) -> dict:
     return {"phase": phase or "unknown", "done": 0, "total": 0, "level": 0}
 
 
-def _conv_pending(state: Optional[dict]) -> dict:
+def _conv_pending(state: dict | None) -> dict:
     return {
         "status": "pending",
         "title": None,
@@ -300,7 +299,7 @@ def _advance_conv_summary(key: str, segments: list) -> dict:
     return _conv_pending(state)
 
 
-async def _drive_conv_summary(project_name: str, conversation_id: str, provider: str, db: AsyncSession):
+async def _drive_conv_summary(project_name: str, conversation_id: str, provider: str, db: AsyncSession) -> dict | None:
     key = f"conv_{project_name}_{conversation_id}"
     md_file = SUMMARIES_DIR / f"{key}.md"
     if md_file.exists():
@@ -335,7 +334,7 @@ async def _drive_conv_summary(project_name: str, conversation_id: str, provider:
 # Summary API routes
 # ---------------------------------------------------------------------------
 @router.get("/api/summary/titles")
-def api_summary_titles():
+def api_summary_titles() -> dict:
     """Return all cached summary titles as a map of {key: title}."""
     titles = {}
     if not SUMMARIES_DIR.exists():
@@ -354,7 +353,7 @@ def api_summary_titles():
 
 
 @router.get("/api/summary/conversation/{project_name}/{conversation_id}")
-async def api_conv_summary_get(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)):
+async def api_conv_summary_get(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> dict:
     """Check if a summary exists for a conversation."""
     result = await _drive_conv_summary(project_name, conversation_id, "claude", db)
     if result is None:
@@ -364,7 +363,12 @@ async def api_conv_summary_get(project_name: str, conversation_id: str, db: Asyn
 
 
 @router.post("/api/summary/conversation/{project_name}/{conversation_id}")
-async def api_conv_summary_request(project_name: str, conversation_id: str, provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_conv_summary_request(
+    project_name: str,
+    conversation_id: str,
+    provider: str = "claude",
+    db: AsyncSession = Depends(get_db),
+) -> dict | JSONResponse:
     """Request a hierarchical summary for an entire conversation."""
     result = await _drive_conv_summary(project_name, conversation_id, provider, db)
     if result is None:
@@ -373,7 +377,7 @@ async def api_conv_summary_request(project_name: str, conversation_id: str, prov
 
 
 @router.delete("/api/summary/{segment_id}")
-def api_summary_delete(segment_id: str):
+def api_summary_delete(segment_id: str) -> dict:
     """Delete a cached summary so it can be regenerated."""
     if segment_id.startswith("conv_"):
         _delete_conv_artifacts(segment_id)
@@ -387,13 +391,17 @@ def api_summary_delete(segment_id: str):
 
 
 @router.get("/api/summary/{segment_id}")
-def api_summary_get(segment_id: str):
+def api_summary_get(segment_id: str) -> dict:
     """Check if a summary exists for a segment."""
     return _summary_status(segment_id)
 
 
 @router.post("/api/summary/{segment_id}")
-async def api_summary_request(segment_id: str, provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_summary_request(
+    segment_id: str,
+    provider: str = "claude",
+    db: AsyncSession = Depends(get_db),
+) -> dict | JSONResponse:
     """Request a summary for a segment."""
     result = await db.execute(
         select(Segment).where(Segment.id == segment_id)

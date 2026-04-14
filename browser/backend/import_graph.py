@@ -11,12 +11,10 @@ Idempotent via ON CONFLICT DO UPDATE. Safe to re-run.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import async_session
 from models import Concept, Session, SessionConcept, SessionTopic

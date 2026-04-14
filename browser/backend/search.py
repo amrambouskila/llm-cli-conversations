@@ -2,21 +2,20 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Optional
 
 from pydantic import BaseModel
 
 
 class SearchFilters(BaseModel):
-    project: Optional[str] = None
-    model: Optional[str] = None
-    provider: Optional[str] = None
-    after: Optional[date] = None
-    before: Optional[date] = None
-    tools: Optional[list[str]] = None
-    topic: Optional[str] = None
-    min_cost: Optional[float] = None
-    min_turns: Optional[int] = None
+    project: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    after: date | None = None
+    before: date | None = None
+    tools: list[str] | None = None
+    topic: str | None = None
+    min_cost: float | None = None
+    min_turns: int | None = None
 
 
 class ParsedQuery(BaseModel):

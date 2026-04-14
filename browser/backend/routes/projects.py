@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import case, func, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/api/providers")
-async def api_providers(db: AsyncSession = Depends(get_db)):
+async def api_providers(db: AsyncSession = Depends(get_db)) -> list:
     """Return available providers and their project counts."""
     result = await db.execute(
         select(
@@ -51,7 +51,7 @@ async def api_providers(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/api/projects")
-async def api_projects(show_hidden: bool = False, provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_projects(show_hidden: bool = False, provider: str = "claude", db: AsyncSession = Depends(get_db)) -> list:
     """Return list of projects with summaries including per-project stats."""
     # Base filter
     filters = [Session.provider == provider]

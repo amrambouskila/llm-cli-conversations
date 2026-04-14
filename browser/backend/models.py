@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Computed, DateTime, Float, ForeignKey, Index, Integer, Numeric, Text, UniqueConstraint, func,
+    Computed,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Text,
+    UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -28,28 +36,28 @@ class Session(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     project: Mapped[str] = mapped_column(Text, nullable=False)
-    model: Mapped[Optional[str]] = mapped_column(Text)
-    conversation_id: Mapped[Optional[str]] = mapped_column(Text)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    turn_count: Mapped[Optional[int]] = mapped_column(Integer)
-    input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    cache_read_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    cache_creation_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    total_chars: Mapped[Optional[int]] = mapped_column(Integer)
-    total_words: Mapped[Optional[int]] = mapped_column(Integer)
-    estimated_cost: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
-    source_file: Mapped[Optional[str]] = mapped_column(Text)
-    summary_text: Mapped[Optional[str]] = mapped_column(Text)
-    session_type: Mapped[Optional[str]] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)
+    conversation_id: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    turn_count: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_read_tokens: Mapped[int | None] = mapped_column(Integer)
+    cache_creation_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_chars: Mapped[int | None] = mapped_column(Integer)
+    total_words: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    source_file: Mapped[str | None] = mapped_column(Text)
+    summary_text: Mapped[str | None] = mapped_column(Text)
+    session_type: Mapped[str | None] = mapped_column(Text)
     embedding = mapped_column(Vector(384), nullable=True)
-    hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     search_vector = mapped_column(
         TSVECTOR,
         Computed("to_tsvector('english', coalesce(summary_text, ''))", persisted=True),
     )
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     segments: Mapped[list[Segment]] = relationship(
         back_populates="session", cascade="all, delete-orphan",
@@ -93,16 +101,16 @@ class Segment(Base):
     session_id: Mapped[str] = mapped_column(
         ForeignKey("conversations.sessions.id", ondelete="CASCADE"), nullable=False,
     )
-    segment_index: Mapped[Optional[int]] = mapped_column(Integer)
-    role: Mapped[Optional[str]] = mapped_column(Text)
-    timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    char_count: Mapped[Optional[int]] = mapped_column(Integer)
-    word_count: Mapped[Optional[int]] = mapped_column(Integer)
-    input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    raw_text: Mapped[Optional[str]] = mapped_column(Text)
-    preview: Mapped[Optional[str]] = mapped_column(Text)
-    hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    segment_index: Mapped[int | None] = mapped_column(Integer)
+    role: Mapped[str | None] = mapped_column(Text)
+    timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    char_count: Mapped[int | None] = mapped_column(Integer)
+    word_count: Mapped[int | None] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    raw_text: Mapped[str | None] = mapped_column(Text)
+    preview: Mapped[str | None] = mapped_column(Text)
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     search_vector = mapped_column(
         TSVECTOR,
         Computed("to_tsvector('english', coalesce(raw_text, ''))", persisted=True),
@@ -127,15 +135,15 @@ class ToolCall(Base):
     session_id: Mapped[str] = mapped_column(
         ForeignKey("conversations.sessions.id", ondelete="CASCADE"), nullable=False,
     )
-    segment_id: Mapped[Optional[str]] = mapped_column(
+    segment_id: Mapped[str | None] = mapped_column(
         ForeignKey("conversations.segments.id", ondelete="CASCADE"),
     )
     tool_name: Mapped[str] = mapped_column(Text, nullable=False)
-    tool_family: Mapped[Optional[str]] = mapped_column(Text)
-    timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    tool_family: Mapped[str | None] = mapped_column(Text)
+    timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     session: Mapped[Session] = relationship(back_populates="tool_calls")
-    segment: Mapped[Optional[Segment]] = relationship(back_populates="tool_calls")
+    segment: Mapped[Segment | None] = relationship(back_populates="tool_calls")
 
     __table_args__ = (
         Index("idx_tool_calls_session", "session_id"),
@@ -150,8 +158,8 @@ class SessionTopic(Base):
         ForeignKey("conversations.sessions.id", ondelete="CASCADE"), primary_key=True,
     )
     topic: Mapped[str] = mapped_column(Text, primary_key=True)
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
-    source: Mapped[Optional[str]] = mapped_column(Text, server_default="heuristic")
+    confidence: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(Text, server_default="heuristic")
 
     session: Mapped[Session] = relationship(back_populates="topics")
 
@@ -167,7 +175,7 @@ class SavedSearch(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     query: Mapped[str] = mapped_column(Text, nullable=False)
     filters_json = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +187,9 @@ class Concept(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    type: Mapped[Optional[str]] = mapped_column(Text)
-    community_id: Mapped[Optional[int]] = mapped_column(Integer)
-    degree: Mapped[Optional[int]] = mapped_column(Integer)
+    type: Mapped[str | None] = mapped_column(Text)
+    community_id: Mapped[int | None] = mapped_column(Integer)
+    degree: Mapped[int | None] = mapped_column(Integer)
 
     session_concepts: Mapped[list[SessionConcept]] = relationship(
         back_populates="concept", cascade="all, delete-orphan",
@@ -204,8 +212,8 @@ class SessionConcept(Base):
     relationship_label: Mapped[str] = mapped_column(
         "relationship", Text, primary_key=True,
     )
-    edge_type: Mapped[Optional[str]] = mapped_column(Text)
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
+    edge_type: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
 
     session: Mapped[Session] = relationship(back_populates="session_concepts")
     concept: Mapped[Concept] = relationship(back_populates="session_concepts")

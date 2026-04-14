@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/api/stats")
-async def api_stats(provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_stats(provider: str = "claude", db: AsyncSession = Depends(get_db)) -> dict:
     """Return global statistics."""
     # Totals
     totals = await db.execute(
@@ -72,10 +72,6 @@ async def api_stats(provider: str = "claude", db: AsyncSession = Depends(get_db)
     hidden_convs = await db.execute(
         select(func.count(func.distinct(Session.conversation_id)))
         .where(Session.hidden_at.is_not(None), Session.conversation_id.is_not(None))
-    )
-    hidden_projs = await db.execute(
-        select(func.count(func.distinct(Session.project)))
-        .where(Session.hidden_at.is_not(None))
     )
     # Only count projects where ALL sessions are hidden
     all_projects_result = await db.execute(

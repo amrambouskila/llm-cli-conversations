@@ -17,7 +17,6 @@ import embed
 from load import load_all
 from models import Segment, Session, SessionTopic, ToolCall
 
-
 # Two minimal markdown files in the format produced by convert_claude_jsonl_to_md.py.
 # Em-dashes (—) and the >>>USER_REQUEST<<< sentinel are required for parser.py to
 # split correctly. Tool calls are detected by the **Tool Call: `Name`** marker.

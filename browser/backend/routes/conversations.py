@@ -17,7 +17,7 @@ async def api_project_segments(
     show_hidden: bool = False,
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
-):
+) -> list | JSONResponse:
     """Return segment list for a project (previews, no full content)."""
     filters = [Session.provider == provider, Session.project == project_name]
     if not show_hidden:
@@ -86,7 +86,7 @@ async def api_conversation_view(
     conversation_id: str,
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
-):
+) -> dict | JSONResponse:
     """Return all segments for a single conversation, concatenated."""
     result = await db.execute(
         select(Segment)

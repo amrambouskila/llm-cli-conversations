@@ -19,13 +19,10 @@ Format discovered from actual files:
 """
 
 import hashlib
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
 
 # ---------------------------------------------------------------------------
 # Regex patterns derived from inspecting the real markdown output
@@ -79,10 +76,10 @@ class RequestSegment:
     segment_index: int = 0
     raw_markdown: str = ""
     preview: str = ""
-    timestamp: Optional[str] = None
-    parsed_timestamp: Optional[datetime] = None
-    conversation_id: Optional[str] = None
-    entry_number: Optional[int] = None
+    timestamp: str | None = None
+    parsed_timestamp: datetime | None = None
+    conversation_id: str | None = None
+    entry_number: int | None = None
     metrics: Metrics = field(default_factory=Metrics)
 
 
@@ -156,7 +153,7 @@ def extract_preview(text: str, max_len: int = 120) -> str:
     return "(empty request)"
 
 
-def parse_timestamp_str(ts_str: Optional[str]) -> Optional[datetime]:
+def parse_timestamp_str(ts_str: str | None) -> datetime | None:
     """Parse ISO timestamp string."""
     if not ts_str:
         return None

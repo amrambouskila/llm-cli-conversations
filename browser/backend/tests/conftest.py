@@ -32,6 +32,8 @@ from pathlib import Path
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 os.environ.setdefault("TESTCONTAINERS_HOST_OVERRIDE", "host.docker.internal")
 
+from datetime import UTC
+
 import pytest
 import pytest_asyncio
 
@@ -76,9 +78,10 @@ def db_engine(_pg_container):
     db_url = _pg_container.get_connection_url()
     os.environ["DATABASE_URL"] = db_url
 
-    import db
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
+
+    import db
 
     new_engine = create_async_engine(db_url, poolclass=NullPool)
     new_session = async_sessionmaker(new_engine, expire_on_commit=False)
@@ -180,12 +183,12 @@ async def seed_sessions(db_session):
       - 1 hidden claude session in project archive
       - segments + tool_calls + topics attached so search/dashboard queries return non-trivial data
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     from decimal import Decimal
 
     from models import Segment, Session, SessionTopic, ToolCall
 
-    base = datetime(2026, 3, 15, 12, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 
     sessions = [
         Session(

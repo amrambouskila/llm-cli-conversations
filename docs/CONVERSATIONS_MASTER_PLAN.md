@@ -918,6 +918,18 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 
 **Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, modified `browser/frontend/vitest.config.js` (added `coverage.thresholds` block).
 
+**Post-6.7 hardening pass (same phase, follow-up):**
+- **Ruff cleanup**: the initial 6.7 push surfaced 272 ruff errors against `browser/backend/`. 229 auto-fixed (UP045 PEP-604 Optional, F401 unused imports, I001 import order, UP017 datetime.UTC). The remaining 52 type-annotation errors (ANN201/ANN202/ANN001) were closed by adding return types to all FastAPI route handlers and private SQL-stmt helpers. E402 was resolved by relocating the `_log()` helper in `app.py` and `load.py` to after all imports. E501 + F841 fixed by line-wrap and unused-var deletion. Final state: `ruff check .` exits 0.
+- **CI multi-branch trigger**: `ci.yml` now triggers on push + PR for `main`, `staging`, `dev` (was `main` only) plus `workflow_dispatch` for manual runs. The per-ref concurrency block keeps each branch's pipeline independent.
+- **Frontend coverage extension**: added `MetadataPanel.test.jsx` (4 tests, 100% lines/branches/funcs) and a corresponding entry in `vitest.config.js` `coverage.thresholds`. Total frontend test count now 104 across 6 files.
+- **`.gitignore` consolidation**: merged the broader patterns from the parent workspace template into the subproject `.gitignore` — IDE (.idea, .vscode, *.swp), env files, expanded Python (*.py[cod], *.pyo, venv/, *.egg-info/), Node (*.tsbuildinfo), Docker overrides. Keeps the project-specific data-dir entries (raw/, markdown/, etc.).
+
+**What is intentionally NOT yet enforced (tracked for 6.8):**
+- Frontend ESLint — no eslint config exists; the master plan §6.7's `pnpm lint` line was aspirational. Adding eslint is a feature add and the codebase (notably 30K-line `App.jsx`) would surface dozens of issues. Belongs in 6.8 alongside component decomposition.
+- Per-file thresholds for `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx` — these are the components 6.6 deliberately deferred. Their threshold entries land as 6.8 extracts and tests them.
+- The two latent `routes/segments.py` bugs from 6.5 (`func.literal`, date-range cast) — still `xfail(strict=True)`; flip to XPASS and force xfail-removal when 6.8 fixes them.
+- Backend route-module coverage — currently low because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task. Tests prove handler behavior via real DB state assertions but can't increase the line counter. Will resolve naturally in 6.8 when route handlers become thin shells calling extracted services (services get directly traced).
+
 CI must be green before 6.8 begins — the refactor needs both the test suite and the automated gate.
 
 #### 6.8 OOP refactoring
@@ -968,7 +980,7 @@ Both are latent bugs in `routes/segments.py` that Phase 6.5's API integration te
 | 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
-| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.7 done) | Dead code removed (6.1–6.4 ✅), backend test suite 333 tests + 2 flagged latent bugs for 6.8 (6.5 ✅), frontend test suite 100 vitest tests with 4 unreachable defensive branches flagged for 6.8 (6.6 ✅), GitHub Actions ci.yml + release.yml with lint/test/coverage-gate/build/docker-build (6.7 ✅) → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
+| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.7 done) | Dead code removed (6.1–6.4 ✅), backend test suite 333 tests + 2 flagged latent bugs for 6.8 (6.5 ✅), frontend test suite 104 vitest tests across 6 files with 4 unreachable defensive branches flagged for 6.8 (6.6 ✅), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7 ✅) → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
 
 Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**
 

@@ -6,9 +6,6 @@ Model files are downloaded from HuggingFace on first use and cached.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
-
 import numpy as np
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download
@@ -18,8 +15,8 @@ MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
 MAX_SEQ_LENGTH = 256
 
-_tokenizer: Optional[Tokenizer] = None
-_ort_session: Optional[ort.InferenceSession] = None
+_tokenizer: Tokenizer | None = None
+_ort_session: ort.InferenceSession | None = None
 
 
 def _ensure_model() -> tuple[Tokenizer, ort.InferenceSession]:
@@ -77,8 +74,8 @@ def embed_text(text: str) -> list[float]:
 
 def build_session_text(
     project: str,
-    model: Optional[str],
-    summary_text: Optional[str],
+    model: str | None,
+    summary_text: str | None,
     topics: list[str],
     tools: list[str],
 ) -> str:

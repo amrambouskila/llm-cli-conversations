@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import distinct, func, select, text
+from sqlalchemy import Select, distinct, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
@@ -55,7 +54,11 @@ async def _get_tool_breakdown(db: AsyncSession, segment_id: str) -> dict[str, in
 
 
 @router.get("/api/segments/{segment_id}/export")
-async def api_segment_export(segment_id: str, provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_segment_export(
+    segment_id: str,
+    provider: str = "claude",
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
     """Return raw markdown for download/copy."""
     result = await db.execute(
         select(Segment, Session)
@@ -73,7 +76,11 @@ async def api_segment_export(segment_id: str, provider: str = "claude", db: Asyn
 
 
 @router.get("/api/segments/{segment_id}")
-async def api_segment_detail(segment_id: str, provider: str = "claude", db: AsyncSession = Depends(get_db)):
+async def api_segment_detail(
+    segment_id: str,
+    provider: str = "claude",
+    db: AsyncSession = Depends(get_db),
+) -> dict | JSONResponse:
     """Return full segment data including raw markdown."""
     result = await db.execute(
         select(Segment, Session)
@@ -118,7 +125,7 @@ def _rrf_merge(
     return scores
 
 
-def _recency_boost(started_at: Optional[datetime], now: datetime) -> float:
+def _recency_boost(started_at: datetime | None, now: datetime) -> float:
     """Gentle log-decay: 1 / (1 + log(1 + days_ago / 30))."""
     if not started_at:
         return 0.0
@@ -126,14 +133,14 @@ def _recency_boost(started_at: Optional[datetime], now: datetime) -> float:
     return 1.0 / (1.0 + math.log(1.0 + days_ago / 30.0))
 
 
-def _length_signal(total_words: Optional[int]) -> float:
+def _length_signal(total_words: int | None) -> float:
     """Longer sessions slightly preferred. Log-scaled, normalized to [0, 1]."""
     if not total_words or total_words <= 0:
         return 0.0
     return min(1.0, math.log(1 + total_words) / math.log(10001))
 
 
-def _exact_match_bonus(summary_text: Optional[str], query: str) -> float:
+def _exact_match_bonus(summary_text: str | None, query: str) -> float:
     """Fraction of query terms that appear verbatim in the session summary."""
     if not summary_text or not query:
         return 0.0
@@ -211,11 +218,11 @@ async def _community_rerank(
 
 @router.get("/api/search")
 async def api_search(
-    q: Optional[str] = Query(None),
+    q: str | None = Query(None),
     show_hidden: bool = False,
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     """Hybrid semantic + keyword search returning session-level results.
 
     When free text is present, runs two retrieval legs:
@@ -264,7 +271,7 @@ async def api_search(
             .where(SessionTopic.topic.ilike(f"%%{f.topic}%%"))
         )
 
-    def _apply_filters(stmt, include_tool_topic: bool = True):
+    def _apply_filters(stmt: Select, include_tool_topic: bool = True) -> Select:
         for cond in session_conditions:
             stmt = stmt.where(cond)
         if include_tool_topic:
@@ -339,7 +346,7 @@ async def api_search(
         sessions_by_id = {s.id: s for s in sess_result.scalars().all()}
 
         # === Final scoring: DESIGN.md §3 ranking formula ===
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         scored: dict[str, float] = {}
         for sid, rrf in rrf_scores.items():
             session = sessions_by_id.get(sid)
@@ -527,7 +534,7 @@ def _extract_snippet(raw_text: str, query: str, max_len: int = 250) -> str:
 async def api_search_status(
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
-):
+) -> dict:
     """Report embedding + graph coverage so the frontend can show search mode."""
     total = await db.execute(
         select(func.count(Session.id)).where(
@@ -578,7 +585,7 @@ async def api_search_status(
 async def api_search_filters(
     provider: str = "claude",
     db: AsyncSession = Depends(get_db),
-):
+) -> dict:
     """Return distinct values for filter autocomplete."""
     projects_q = await db.execute(
         select(distinct(Session.project))
@@ -619,7 +626,7 @@ async def api_search_filters(
 async def api_related_sessions(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     """Find sessions that share concept nodes with the given session."""
     # Check if session_concepts has any data for this session
     check = await db.execute(

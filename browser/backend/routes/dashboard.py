@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import Float, and_, cast, distinct, func, literal, select, text
+from sqlalchemy import Select, and_, distinct, func, select, text
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
-from models import Concept, Segment, Session, SessionConcept, SessionTopic, ToolCall
+from models import Concept, Session, SessionConcept, ToolCall
 
 GRAPHIFY_OUT = Path(os.environ.get("GRAPHIFY_OUT", "/data/graphify-out"))
 
@@ -31,22 +31,22 @@ for family, tools in TOOL_FAMILIES.items():
         TOOL_TO_FAMILY[tool] = family
 
 
-def _parse_date(s: str) -> Optional[datetime]:
+def _parse_date(s: str) -> datetime | None:
     """Parse a YYYY-MM-DD string to a timezone-aware datetime."""
     try:
-        return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 
 
 def _apply_global_filters(
-    stmt,
-    provider: Optional[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-    project: Optional[str],
-    model: Optional[str],
-):
+    stmt: Select,
+    provider: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    project: str | None,
+    model: str | None,
+) -> Select:
     if provider:
         stmt = stmt.where(Session.provider == provider)
     stmt = stmt.where(Session.hidden_at.is_(None))
@@ -68,12 +68,12 @@ def _apply_global_filters(
 @router.get("/api/dashboard/summary")
 async def dashboard_summary(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict:
     base = select(
         func.count(Session.id).label("total_sessions"),
         func.coalesce(func.sum(Session.input_tokens), 0).label("total_input"),
@@ -92,11 +92,11 @@ async def dashboard_summary(
     project_count = row.project_count
 
     # Week-over-week deltas
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     last_7 = now - timedelta(days=7)
     prior_7 = now - timedelta(days=14)
 
-    async def _week_stats(start: datetime, end: datetime):
+    async def _week_stats(start: datetime, end: datetime) -> Row:
         stmt = select(
             func.count(Session.id).label("sessions"),
             func.coalesce(func.sum(Session.input_tokens), 0).label("input_t"),
@@ -120,7 +120,7 @@ async def dashboard_summary(
     this_week = await _week_stats(last_7, now)
     prev_week = await _week_stats(prior_7, last_7)
 
-    def _delta(current, previous):
+    def _delta(current: int | float, previous: int | float) -> int:
         return int(current) - int(previous)
 
     this_tokens = int(this_week.input_t) + int(this_week.output_t)
@@ -151,12 +151,12 @@ async def dashboard_cost_over_time(
     group_by: str = Query("week"),
     stack_by: str = Query("project"),
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     if group_by == "day":
         period_expr = func.to_char(Session.started_at, "YYYY-MM-DD")
     elif group_by == "month":
@@ -198,12 +198,12 @@ async def dashboard_cost_over_time(
 @router.get("/api/dashboard/projects")
 async def dashboard_projects(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     stmt = select(
         Session.project,
         func.coalesce(func.sum(Session.estimated_cost), 0).label("total_cost"),
@@ -229,12 +229,12 @@ async def dashboard_projects(
 @router.get("/api/dashboard/tools")
 async def dashboard_tools(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     stmt = (
         select(
             ToolCall.tool_name,
@@ -265,12 +265,12 @@ async def dashboard_tools(
 @router.get("/api/dashboard/models")
 async def dashboard_models(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     stmt = select(
         Session.model,
         func.count(Session.id).label("total_sessions"),
@@ -303,12 +303,12 @@ async def dashboard_models(
 @router.get("/api/dashboard/session-types")
 async def dashboard_session_types(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     # Total count for percentage calc
     total_stmt = select(func.count(Session.id))
     total_stmt = _apply_global_filters(total_stmt, provider, date_from, date_to, project, model)
@@ -340,14 +340,14 @@ async def dashboard_session_types(
 @router.get("/api/dashboard/heatmap")
 async def dashboard_heatmap(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     # Last 365 days of daily activity
-    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+    cutoff = datetime.now(UTC) - timedelta(days=365)
 
     stmt = (
         select(
@@ -376,12 +376,12 @@ async def dashboard_heatmap(
 @router.get("/api/dashboard/anomalies")
 async def dashboard_anomalies(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> list:
     # Compute mean and stddev of cost
     stats_stmt = select(
         func.avg(Session.estimated_cost).label("mean_cost"),
@@ -439,12 +439,12 @@ async def dashboard_anomalies(
 @router.get("/api/dashboard/graph")
 async def dashboard_graph(
     provider: str = "claude",
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    model: Optional[str] = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    project: str | None = Query(None),
+    model: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-):
+) -> dict:
     # Check if concepts table has any data — if not, try importing graph.json
     count_result = await db.execute(select(func.count(Concept.id)))
     if count_result.scalar_one() == 0:
@@ -553,7 +553,7 @@ async def dashboard_graph(
 
 
 @router.get("/api/dashboard/graph/status")
-async def dashboard_graph_status(db: AsyncSession = Depends(get_db)):
+async def dashboard_graph_status(db: AsyncSession = Depends(get_db)) -> dict:
     """Return graph generation status, progress, and whether data exists."""
     count_result = await db.execute(select(func.count(Concept.id)))
     has_data = count_result.scalar_one() > 0
@@ -586,7 +586,7 @@ async def dashboard_graph_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/api/dashboard/graph/generate")
-async def dashboard_graph_generate():
+async def dashboard_graph_generate() -> dict:
     """Trigger graph re-generation by writing a request file for the host watcher."""
     GRAPHIFY_OUT.mkdir(parents=True, exist_ok=True)
     trigger = GRAPHIFY_OUT / ".generate_requested"
@@ -597,7 +597,7 @@ async def dashboard_graph_generate():
 
 
 @router.post("/api/dashboard/graph/import")
-async def dashboard_graph_import():
+async def dashboard_graph_import() -> dict:
     """Import graph.json from disk into Postgres on demand."""
     graph_file = GRAPHIFY_OUT / "graph.json"
     if not graph_file.exists():

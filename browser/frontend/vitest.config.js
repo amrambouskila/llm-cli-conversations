@@ -28,6 +28,11 @@ export default defineConfig({
           branches: 85,
           functions: 100,
         },
+        "src/components/MetadataPanel.jsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+        },
         "src/App.jsx": { lines: 70, branches: 65, functions: 50 },
       },
     },

@@ -39,7 +39,7 @@ async def _hidden_counts(db: AsyncSession) -> dict:
 
 
 @router.post("/api/hide/segment/{segment_id}")
-async def api_hide_segment(segment_id: str, db: AsyncSession = Depends(get_db)):
+async def api_hide_segment(segment_id: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Segment).where(Segment.id == segment_id).values(hidden_at=func.now())
     )
@@ -49,7 +49,7 @@ async def api_hide_segment(segment_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/api/restore/segment/{segment_id}")
-async def api_restore_segment(segment_id: str, db: AsyncSession = Depends(get_db)):
+async def api_restore_segment(segment_id: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Segment).where(Segment.id == segment_id).values(hidden_at=None)
     )
@@ -59,7 +59,7 @@ async def api_restore_segment(segment_id: str, db: AsyncSession = Depends(get_db
 
 
 @router.post("/api/hide/conversation/{project_name}/{conversation_id}")
-async def api_hide_conversation(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)):
+async def api_hide_conversation(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Session)
         .where(Session.project == project_name, Session.conversation_id == conversation_id)
@@ -71,7 +71,7 @@ async def api_hide_conversation(project_name: str, conversation_id: str, db: Asy
 
 
 @router.post("/api/restore/conversation/{project_name}/{conversation_id}")
-async def api_restore_conversation(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)):
+async def api_restore_conversation(project_name: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Session)
         .where(Session.project == project_name, Session.conversation_id == conversation_id)
@@ -83,7 +83,7 @@ async def api_restore_conversation(project_name: str, conversation_id: str, db: 
 
 
 @router.post("/api/hide/project/{project_name}")
-async def api_hide_project(project_name: str, db: AsyncSession = Depends(get_db)):
+async def api_hide_project(project_name: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Session).where(Session.project == project_name).values(hidden_at=func.now())
     )
@@ -93,7 +93,7 @@ async def api_hide_project(project_name: str, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/api/restore/project/{project_name}")
-async def api_restore_project(project_name: str, db: AsyncSession = Depends(get_db)):
+async def api_restore_project(project_name: str, db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(
         update(Session).where(Session.project == project_name).values(hidden_at=None)
     )
@@ -103,7 +103,7 @@ async def api_restore_project(project_name: str, db: AsyncSession = Depends(get_
 
 
 @router.post("/api/restore/all")
-async def api_restore_all(db: AsyncSession = Depends(get_db)):
+async def api_restore_all(db: AsyncSession = Depends(get_db)) -> dict:
     await db.execute(update(Session).values(hidden_at=None))
     await db.execute(update(Segment).values(hidden_at=None))
     await db.commit()
@@ -112,7 +112,7 @@ async def api_restore_all(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/api/hidden")
-async def api_hidden(db: AsyncSession = Depends(get_db)):
+async def api_hidden(db: AsyncSession = Depends(get_db)) -> dict:
     """Return full hidden state for the trash view."""
     # Hidden segments
     seg_result = await db.execute(

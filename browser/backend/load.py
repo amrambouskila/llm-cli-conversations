@@ -12,39 +12,35 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import select, text, update
-
-
-def _log(msg: str) -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {msg}")
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import async_session, engine
+from classify import classify_session
+from db import async_session
 from jsonl_reader import (
     SessionMetadata,
     read_claude_metadata,
     read_codex_metadata,
 )
 from models import (
-    Concept,
     Segment,
     Session,
-    SessionConcept,
     SessionTopic,
     ToolCall,
 )
 from parser import build_index, compute_tool_breakdown
-from classify import classify_session
 from topics import extract_topics
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}")
 
 # USD per 1M tokens (input, output)
 MODEL_PRICING: dict[str, tuple[float, float]] = {
@@ -78,8 +74,8 @@ def _tool_family(tool_name: str) -> str:
 
 
 def _estimate_cost(
-    meta: Optional[SessionMetadata],
-    model: Optional[str],
+    meta: SessionMetadata | None,
+    model: str | None,
     char_count: int,
 ) -> Decimal:
     """Compute estimated cost in USD."""
@@ -108,7 +104,7 @@ def _estimate_cost(
     return Decimal(str(round(est_tokens * 3.00 / 1_000_000, 4)))
 
 
-def _parse_ts(ts_str: Optional[str]) -> Optional[datetime]:
+def _parse_ts(ts_str: str | None) -> datetime | None:
     """Parse ISO timestamp string to timezone-aware datetime."""
     if not ts_str:
         return None
@@ -120,7 +116,7 @@ def _parse_ts(ts_str: Optional[str]) -> Optional[datetime]:
     ):
         try:
             dt = datetime.strptime(ts_str, fmt)
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=UTC)
         except ValueError:
             continue
     return None
@@ -140,7 +136,7 @@ def _group_segments_into_sessions(
         project_name = project["name"]
 
         # Group segments by conversation_id
-        conv_groups: dict[Optional[str], list[dict]] = defaultdict(list)
+        conv_groups: dict[str | None, list[dict]] = defaultdict(list)
         for seg_summary in project["segments"]:
             seg_data = index["segments"][seg_summary["id"]]
             conv_groups[seg_data.get("conversation_id")].append(seg_data)
@@ -201,7 +197,7 @@ def _group_segments_into_sessions(
     return sessions
 
 
-async def _upsert_session(db: AsyncSession, session_data: dict, meta: Optional[SessionMetadata]) -> None:
+async def _upsert_session(db: AsyncSession, session_data: dict, meta: SessionMetadata | None) -> None:
     """Insert or update a single session and its segments/tool_calls/topics."""
     model = meta.model if meta else None
     model_provider = meta.model_provider if meta else None

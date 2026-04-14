@@ -1,15 +1,43 @@
-.venv/
-__pycache__/
-*.pyc
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+
+# Claude state (project-tracked .claude/commands etc. are explicitly committed)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Node
 browser/frontend/node_modules/
 browser/frontend/dist/
+*.tsbuildinfo
+
+# Docker overrides
+docker-compose.override.yml
+
+# Project data dirs (host-mounted into the container at runtime)
 raw/
 markdown/
 markdown_codex/
 browser_state/
-.claude/settings.local.json
-CLAUDE.local.md
 graphify-out/
 
 # Test + coverage artifacts (generated locally by pytest-cov / vitest)

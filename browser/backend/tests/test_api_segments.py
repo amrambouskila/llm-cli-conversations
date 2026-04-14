@@ -1,8 +1,9 @@
 """Integration tests for segment list, segment detail, search, and search/status."""
 from __future__ import annotations
 
-import pytest
+from datetime import UTC
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # /api/projects/{p}/segments
@@ -29,14 +30,15 @@ async def test_project_segments_404_for_unknown_project(api_client):
 
 
 async def test_project_segments_excludes_hidden_by_default(seed_sessions, api_client, db_session):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy import update
+
     from models import Segment
 
     await db_session.execute(
         update(Segment).where(Segment.id == "seg-1a")
-        .values(hidden_at=datetime(2026, 4, 1, tzinfo=timezone.utc))
+        .values(hidden_at=datetime(2026, 4, 1, tzinfo=UTC))
     )
     await db_session.commit()
 
@@ -271,6 +273,7 @@ async def test_search_status_keyword_mode(seed_sessions, api_client):
 async def test_search_status_hybrid_mode(seed_sessions, api_client, db_session):
     """When all visible sessions have embeddings, mode is 'hybrid'."""
     from sqlalchemy import update
+
     from models import Session
     fake_vec = [0.01] * 384
     await db_session.execute(
@@ -288,6 +291,7 @@ async def test_search_status_hybrid_mode(seed_sessions, api_client, db_session):
 async def test_search_status_partial_embedding_mode(seed_sessions, api_client, db_session):
     """When only some sessions are embedded, mode is 'embedding'."""
     from sqlalchemy import update
+
     from models import Session
     await db_session.execute(
         update(Session).where(Session.id == "s1").values(embedding=[0.01] * 384)

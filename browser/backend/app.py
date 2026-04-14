@@ -14,20 +14,21 @@ import shutil
 import subprocess
 import sys
 import traceback
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-
-
-def _log(msg: str) -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {msg}")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from routes import projects, segments, conversations, stats, summaries, visibility, dashboard
+from routes import conversations, dashboard, projects, segments, stats, summaries, visibility
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -67,7 +68,7 @@ CODEX_MARKDOWN_DIR = os.environ.get(
 startup_ready = False
 
 
-async def _startup_load():
+async def _startup_load() -> None:
     global startup_ready
     try:
         from load import load_all
@@ -86,7 +87,7 @@ async def _startup_load():
 
 
 @asynccontextmanager
-async def lifespan(app):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from db import init_db
     await init_db()
     _log("Database schema initialized (conversations.*)")
@@ -232,12 +233,12 @@ async def run_export_pipeline() -> dict:
 # API routes that stay in app.py
 # ---------------------------------------------------------------------------
 @app.get("/api/ready")
-async def api_ready():
+async def api_ready() -> dict:
     return {"ready": startup_ready}
 
 
 @app.post("/api/update")
-async def api_update():
+async def api_update() -> JSONResponse:
     """Run the full export pipeline: sync, convert, re-index."""
     try:
         result = await run_export_pipeline()
@@ -262,7 +263,7 @@ if static_path.exists() and (static_path / "index.html").exists():
         app.mount("/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
 
     @app.get("/{full_path:path}")
-    def serve_spa(full_path: str):
+    def serve_spa(full_path: str) -> FileResponse:
         file_path = static_path / full_path
         # Guard against path traversal (defense-in-depth)
         if not str(file_path.resolve()).startswith(str(static_path.resolve())):

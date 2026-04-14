@@ -14,23 +14,22 @@ Codex JSONL: model/usage not reliably available.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
 class SessionMetadata:
     session_id: str
-    model: Optional[str] = None
-    model_provider: Optional[str] = None
+    model: str | None = None
+    model_provider: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
 
 
-def _read_claude_jsonl(jsonl_path: Path) -> Optional[SessionMetadata]:
+def _read_claude_jsonl(jsonl_path: Path) -> SessionMetadata | None:
     """Parse a single Claude JSONL file and extract session metadata."""
     session_id = jsonl_path.stem
     # Skip subagent files
@@ -69,7 +68,7 @@ def _read_claude_jsonl(jsonl_path: Path) -> Optional[SessionMetadata]:
     return meta
 
 
-def _read_codex_jsonl(jsonl_path: Path) -> Optional[SessionMetadata]:
+def _read_codex_jsonl(jsonl_path: Path) -> SessionMetadata | None:
     """Parse a single Codex JSONL file and extract session metadata."""
     meta = None
 

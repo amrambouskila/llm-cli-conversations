@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-
 
 # ---------------------------------------------------------------------------
 # Session
@@ -13,21 +11,21 @@ from pydantic import BaseModel, ConfigDict
 class SessionBase(BaseModel):
     provider: str
     project: str
-    model: Optional[str] = None
-    conversation_id: Optional[str] = None
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
-    turn_count: Optional[int] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    cache_read_tokens: Optional[int] = None
-    cache_creation_tokens: Optional[int] = None
-    total_chars: Optional[int] = None
-    total_words: Optional[int] = None
-    estimated_cost: Optional[float] = None
-    source_file: Optional[str] = None
-    summary_text: Optional[str] = None
-    session_type: Optional[str] = None
+    model: str | None = None
+    conversation_id: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    turn_count: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    total_chars: int | None = None
+    total_words: int | None = None
+    estimated_cost: float | None = None
+    source_file: str | None = None
+    summary_text: str | None = None
+    session_type: str | None = None
 
 
 class SessionCreate(SessionBase):
@@ -38,8 +36,8 @@ class SessionRead(SessionBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    hidden_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    hidden_at: datetime | None = None
+    created_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -48,15 +46,15 @@ class SessionRead(SessionBase):
 
 class SegmentBase(BaseModel):
     session_id: str
-    segment_index: Optional[int] = None
-    role: Optional[str] = None
-    timestamp: Optional[datetime] = None
-    char_count: Optional[int] = None
-    word_count: Optional[int] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    raw_text: Optional[str] = None
-    preview: Optional[str] = None
+    segment_index: int | None = None
+    role: str | None = None
+    timestamp: datetime | None = None
+    char_count: int | None = None
+    word_count: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    raw_text: str | None = None
+    preview: str | None = None
 
 
 class SegmentCreate(SegmentBase):
@@ -67,7 +65,7 @@ class SegmentRead(SegmentBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    hidden_at: Optional[datetime] = None
+    hidden_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -76,10 +74,10 @@ class SegmentRead(SegmentBase):
 
 class ToolCallBase(BaseModel):
     session_id: str
-    segment_id: Optional[str] = None
+    segment_id: str | None = None
     tool_name: str
-    tool_family: Optional[str] = None
-    timestamp: Optional[datetime] = None
+    tool_family: str | None = None
+    timestamp: datetime | None = None
 
 
 class ToolCallCreate(ToolCallBase):
@@ -101,8 +99,8 @@ class SessionTopicRead(BaseModel):
 
     session_id: str
     topic: str
-    confidence: Optional[float] = None
-    source: Optional[str] = "heuristic"
+    confidence: float | None = None
+    source: str | None = "heuristic"
 
 
 # ---------------------------------------------------------------------------
@@ -112,14 +110,14 @@ class SessionTopicRead(BaseModel):
 class SavedSearchCreate(BaseModel):
     name: str
     query: str
-    filters_json: Optional[dict] = None
+    filters_json: dict | None = None
 
 
 class SavedSearchRead(SavedSearchCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +129,9 @@ class ConceptRead(BaseModel):
 
     id: str
     name: str
-    type: Optional[str] = None
-    community_id: Optional[int] = None
-    degree: Optional[int] = None
+    type: str | None = None
+    community_id: int | None = None
+    degree: int | None = None
 
 
 class SessionConceptRead(BaseModel):
@@ -142,5 +140,5 @@ class SessionConceptRead(BaseModel):
     session_id: str
     concept_id: str
     relationship_label: str
-    edge_type: Optional[str] = None
-    confidence: Optional[float] = None
+    edge_type: str | None = None
+    confidence: float | None = None
