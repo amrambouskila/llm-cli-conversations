@@ -17,6 +17,7 @@ select = ["E", "F", "I", "N", "UP", "ANN"]
 [tool.coverage.run]
 source = ["."]
 omit = ["tests/*", "convert_*.py"]
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 show_missing = true
