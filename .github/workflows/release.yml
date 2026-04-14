@@ -1,0 +1,58 @@
+name: Release
+
+# Manual version bump on main. Bumps browser/frontend/package.json (the
+# project's source-of-truth version field — backend has no [project] block
+# in pyproject.toml), commits, tags, pushes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver level to bump"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump version + tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: browser/frontend/package-lock.json
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump package.json (no tag yet)
+        id: bump
+        working-directory: browser/frontend
+        run: |
+          new_version=$(npm version "${{ inputs.bump }}" --no-git-tag-version)
+          echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit + tag
+        run: |
+          version="${{ steps.bump.outputs.new_version }}"
+          git add browser/frontend/package.json browser/frontend/package-lock.json
+          git commit -m "release: ${version}"
+          git tag "${version}"
+          git push origin main
+          git push origin "${version}"

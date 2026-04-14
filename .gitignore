@@ -11,3 +11,10 @@ browser_state/
 .claude/settings.local.json
 CLAUDE.local.md
 graphify-out/
+
+# Test + coverage artifacts (generated locally by pytest-cov / vitest)
+.coverage
+coverage/
+coverage.xml
+.pytest_cache/
+.ruff_cache/
