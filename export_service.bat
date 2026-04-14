@@ -106,6 +106,8 @@ REM ============================================================
 echo ==^> Starting Docker Compose...
 docker compose -f "%COMPOSE_FILE%" up --build -d
 
+call :sync_postgres
+
 REM Start watchers
 call :start_summary_watcher
 call :start_graph_watcher
@@ -190,6 +192,8 @@ call :run_export
 
 echo ==^> Rebuilding Docker image...
 docker compose -f "%COMPOSE_FILE%" up --build -d
+
+call :sync_postgres
 
 call :start_summary_watcher
 call :start_graph_watcher
@@ -283,6 +287,22 @@ if exist "%SCRIPT_DIR%markdown_codex" rmdir /s /q "%SCRIPT_DIR%markdown_codex"
 if exist "%SCRIPT_DIR%browser_state" rmdir /s /q "%SCRIPT_DIR%browser_state"
 if exist "%GRAPHIFY_OUT%" rmdir /s /q "%GRAPHIFY_OUT%"
 echo Done. Source data in %USERPROFILE%\.claude\projects\ is untouched.
+goto :eof
+
+:sync_postgres
+echo ==^> Waiting for app container to be ready...
+set "READY_TRIES=0"
+:wait_ready
+set /a READY_TRIES+=1
+curl -fsS "http://localhost:%PORT%/api/ready" >nul 2>&1
+if not errorlevel 1 goto :do_sync
+if %READY_TRIES% GEQ 60 goto :do_sync
+timeout /t 1 /nobreak >nul
+goto :wait_ready
+:do_sync
+echo ==^> Syncing Postgres from converted markdown...
+docker compose -f "%COMPOSE_FILE%" exec -T llm-browser python /app/load.py
+if errorlevel 1 echo     Note: Postgres sync failed (non-fatal) — startup lifespan will retry.
 goto :eof
 
 :start_summary_watcher

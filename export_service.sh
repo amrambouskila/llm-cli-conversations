@@ -222,6 +222,28 @@ stop_all_watchers() {
   stop_graph_watcher
 }
 
+# ============================================================
+#   POSTGRES SYNC — load freshly converted markdown into the DB
+# ============================================================
+sync_postgres() {
+  echo "==> Waiting for app container to be healthy..."
+  for i in $(seq 1 60); do
+    if docker compose -f "$COMPOSE_FILE" exec -T llm-browser sh -c 'exit 0' >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  for i in $(seq 1 60); do
+    if curl -fsS "http://localhost:$PORT/api/ready" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  echo "==> Syncing Postgres from converted markdown..."
+  docker compose -f "$COMPOSE_FILE" exec -T llm-browser python /app/load.py || \
+    echo "    Note: Postgres sync failed (non-fatal) — startup lifespan will retry."
+}
+
 # Ensure watchers are killed on script exit
 trap stop_all_watchers EXIT
 
@@ -284,6 +306,8 @@ check_docker
 
 echo "==> Starting Docker Compose..."
 PORT="$PORT" docker compose -f "$COMPOSE_FILE" up --build -d
+
+sync_postgres
 
 echo "==> Starting watchers..."
 start_summary_watcher
@@ -353,6 +377,8 @@ while true; do
 
             echo "==> Rebuilding Docker image..."
             PORT="$PORT" docker compose -f "$COMPOSE_FILE" up --build -d
+
+            sync_postgres
 
             echo "==> Starting watchers..."
             start_summary_watcher

@@ -2,7 +2,7 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **Current phase: 6 (not started) — Phases 0-5 complete**
+> **Current phase: 6 (6.1–6.4 done, 6.5 next) — Phases 0-5 complete**
 >
 > Update the "Current phase" line above as each phase completes.
 
@@ -844,43 +844,35 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 ### Phase 6 — Cleanup, Testing & CI
 
-**Goal:** Remove dead code, refactor to OOP, add comprehensive test coverage, set up CI pipeline. **Final phase — project completion.**
+**Goal:** Remove dead code, add comprehensive test coverage, set up CI pipeline, then refactor to OOP with the test suite as a safety net. **Final phase — project completion.**
 
-#### 6.1 Remove in-memory index code
-- Delete `index_store.py` and all imports from route modules
-- Remove `build_index()` call from startup
-- Remove `_watch_loop`
-- `parser.py` stays — used by `load.py` to parse markdown
+**Execution order:** 6.1–6.4 (cleanup, done) → 6.5–6.6 (tests) → 6.7 (CI) → 6.8 (OOP refactor, done last under test + CI protection) → 6.9 (docs). Tests are written against the current functional architecture so they capture real behavior; 6.8 then refactors under that safety net.
 
-#### 6.2 Remove file-based hidden state
-- Delete `state.py` (hidden state now in Postgres `hidden_at` columns)
-- Remove `browser_state.json` from Docker volume mount if only summaries remain
-- Keep the `summaries/` directory — pipeline still uses filesystem
+#### 6.1 Remove in-memory index code ✅
+- Deleted `index_store.py`; removed `INDEX`/`CODEX_INDEX`, `init_indexes`, `rebuild_index` from `app.py`
+- Removed `_watch_loop`, `_get_dir_mtime`, `WATCH_INTERVAL` config, and `watch_interval` field from `/api/stats`
+- `run_export_pipeline` no longer touches the in-memory index; reports Postgres session counts
+- `parser.py` stayed — `load.py` still uses `build_index()` to parse markdown
 
-#### 6.3 Clean up docker-compose.yml
-- Remove `./browser_state:/data/state` volume mount if only summaries remain (or narrow to summaries only)
+#### 6.2 Remove file-based hidden state ✅
+- Deleted `state.py` (hidden state lives in `sessions.hidden_at` / `segments.hidden_at` since Phase 2)
+- No imports remained; removal was purely dead-code deletion
 
-#### 6.4 Update export_service.sh / .bat
-- After export + convert, add a call to `load.py` to sync new data into Postgres
-- Replaces file-watch-based reindexing
+#### 6.3 Clean up docker-compose.yml ✅
+- Narrowed `./browser_state:/data/state` to `./browser_state/summaries:/data/state/summaries` — only the AI summary cache remains file-based
+- Renamed env var `STATE_DIR` → `SUMMARY_DIR`; simplified the path join in `routes/summaries.py`
 
-#### 6.5 OOP refactoring
-Refactor to proper OOP patterns. Current state is functional — route handlers with inline query logic, helper functions scattered. Target state:
-- **Service layer classes**: `SearchService`, `SessionService`, `LoaderService`, `SummaryService`
-- **Repository pattern**: `browser/backend/repositories/` — one per model
-- **Dependency injection**: services instantiated with repositories, injected via FastAPI `Depends()`
-- **Thin route handlers**: parse params, call service, return response. No query logic in routes.
-- **One class per file** per project conventions
+#### 6.4 Update export_service.sh / .bat ✅
+- Added `sync_postgres` helper in both launchers — polls `/api/ready` then runs `docker compose exec -T llm-browser python /app/load.py`
+- Invoked after initial `up --build -d` and inside the `[r]` restart branch
+- Replaces file-watch-based reindexing removed in 6.1
 
-This is a refactor, not a rewrite. No behavior changes. Test suite (6.6) validates this.
-
-#### 6.6 Unit + integration tests
+#### 6.5 Unit + integration tests (backend)
 Add `pytest` + `pytest-asyncio` + `pytest-cov` in `browser/backend/tests/`.
 
 **Unit tests (mocked DB):**
 - `test_search.py` — `parse_query()` for every filter prefix, combined filters, malformed values, edge cases
 - `test_topics.py`, `test_classify.py` — heuristic extraction/classification
-- `test_services.py` — service layer with mocked repositories
 
 **Integration tests (real Postgres via testcontainer):**
 - `test_api_search.py`, `test_api_filters.py`, `test_api_related.py`
@@ -893,9 +885,10 @@ Add `pytest` + `pytest-asyncio` + `pytest-cov` in `browser/backend/tests/`.
 
 **Test infrastructure:**
 - `conftest.py` — async test fixtures, Postgres testcontainer, deterministic test data seeding
-- Coverage target: **100%** on `search.py`, `topics.py`, `classify.py`, `embed.py`, service classes, repositories. `pragma: no cover` only on startup/lifespan glue.
+- Coverage target: **100%** on `search.py`, `topics.py`, `classify.py`, `embed.py`. `pragma: no cover` only on startup/lifespan glue.
+- Tests target the current functional route handlers so they capture pre-refactor behavior as the contract for 6.8.
 
-#### 6.7 Frontend tests
+#### 6.6 Frontend tests
 Add `vitest` + `@testing-library/react` in `browser/frontend/src/__tests__/`.
 
 - `SearchResults.test.jsx` — session cards, highlighting, click handler, empty state
@@ -904,7 +897,9 @@ Add `vitest` + `@testing-library/react` in `browser/frontend/src/__tests__/`.
 - `utils.test.js` — formatters
 - `tests/setup.js` — import `cleanup` from `@testing-library/react`, call in `afterEach` (Vitest does NOT auto-cleanup)
 
-#### 6.8 GitHub Actions CI
+#### 6.7 GitHub Actions CI
+This project is intentionally on **GitHub** (public, open-source) rather than the global-default GitLab — explicit per-project override of the global CLAUDE.md's GitLab mandate.
+
 `.github/workflows/ci.yml` with stages (in order):
 1. **lint** — `ruff check .` for backend, `pnpm lint` for frontend
 2. **test-backend** — Postgres service container, `pytest --cov --cov-report=xml`
@@ -915,6 +910,19 @@ Add `vitest` + `@testing-library/react` in `browser/frontend/src/__tests__/`.
 
 **Triggers:** push to `main`, PRs to `main`.
 **Release pipeline:** manually triggered on `main` with `BUMP` variable (patch/minor/major) — bumps `package.json` + `pyproject.toml` versions.
+
+CI must be green before 6.8 begins — the refactor needs both the test suite and the automated gate.
+
+#### 6.8 OOP refactoring
+Refactor to proper OOP patterns under the 6.5–6.7 safety net. Current state is functional — route handlers with inline query logic, helper functions scattered. Target state:
+- **Service layer classes**: `SearchService`, `SessionService`, `LoaderService`, `SummaryService`
+- **Repository pattern**: `browser/backend/repositories/` — one per model
+- **Dependency injection**: services instantiated with repositories, injected via FastAPI `Depends()`
+- **Thin route handlers**: parse params, call service, return response. No query logic in routes.
+- **One class per file** per project conventions
+- Coverage target extended to 100% on service classes and repositories once they exist.
+
+This is a refactor, not a rewrite. The test suite from 6.5–6.6 validates no behavior changes; CI enforces it. If any test fails during the refactor, the refactor is wrong — not the test.
 
 #### 6.9 Update documentation
 - Update this master plan to reflect final architecture
@@ -935,7 +943,7 @@ Add `vitest` + `@testing-library/react` in `browser/frontend/src/__tests__/`.
 | 3 — Search Upgrade | ✅ Done | Session-level search with metadata filter parsing, filter chips with autocomplete, related sessions endpoint | Search results shape changed (session-level) | Session cards, filter chips, autocomplete dropdowns |
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
-| 6 — Cleanup, Testing & CI | Not started | Dead code removed, OOP refactoring (service/repository layers), full test suite (pytest + vitest), GitHub Actions CI pipeline with semver (starting at 1.0.0 with patch/minor/major release options) | Nothing | None (internal quality) |
+| 6 — Cleanup, Testing & CI | 🟡 In progress (6.1–6.4 done) | Dead code removed (6.1–6.4 ✅), full test suite (pytest + vitest) → GitHub Actions CI → OOP refactor last under test/CI safety net → docs | Nothing | None (internal quality) |
 
 Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 is the capstone (code quality, tests, CI). **Phase 6 completes the project.**
 
@@ -1824,4 +1832,4 @@ Not formal benchmarks — just "does it feel right."
 - **Mermaid diagrams should stay current** — when a new component is added, update the module dependency graph.
 - **Every feature must justify itself** as: faster recall OR faster pattern understanding. If it doesn't, it's out of scope.
 - **Graceful degradation is sacred.** Every optional component (Graphify, embeddings, AI summaries) must have a working fallback.
-- **Phase 6 is the final phase.** After 6.6-6.8 land, the project is complete. No more features unless a concrete new use case justifies them.
+- **Phase 6 is the final phase.** After 6.5–6.9 land (tests → CI → OOP refactor → docs), the project is complete. No more features unless a concrete new use case justifies them.

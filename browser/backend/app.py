@@ -27,11 +27,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from parser import build_index
-from index_store import (
-    INDEX, CODEX_INDEX, INDEXES,
-    init_indexes, rebuild_index, get_index,
-)
 from routes import projects, segments, conversations, stats, summaries, visibility, dashboard
 
 # ---------------------------------------------------------------------------
@@ -66,18 +61,6 @@ CODEX_MARKDOWN_DIR = os.environ.get(
     str(Path(DEFAULT_MARKDOWN_DIR).parent / "markdown_codex"),
 )
 
-# Watch mode interval in seconds (0 = disabled)
-WATCH_INTERVAL = int(os.environ.get("WATCH_INTERVAL", "30"))
-
-# ---------------------------------------------------------------------------
-# Initialize indexes
-# ---------------------------------------------------------------------------
-init_indexes(DEFAULT_MARKDOWN_DIR, CODEX_MARKDOWN_DIR)
-
-# Track markdown directory mtime for watch mode
-_last_mtime: float = 0.0
-_last_codex_mtime: float = 0.0
-
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -110,10 +93,6 @@ async def lifespan(app):
 
     # Load data in background so the app serves requests immediately
     asyncio.create_task(_startup_load())
-
-    if WATCH_INTERVAL > 0:
-        asyncio.create_task(_watch_loop())
-        _log(f"Watch mode enabled: checking for changes every {WATCH_INTERVAL}s")
     yield
 
 app = FastAPI(title="LLM Conversation Browser", version="1.0.0", lifespan=lifespan)
@@ -213,9 +192,6 @@ async def run_export_pipeline() -> dict:
             "log": log_lines,
         }
 
-    new_claude = rebuild_index("claude", str(markdown_dir))
-    log_lines.append(f"Claude re-indexed: {len(new_claude['projects'])} projects, {len(new_claude['segments'])} segments")
-
     # Also convert Codex sessions if available
     codex_converter = SCRIPT_DIR / "convert_codex_sessions.py"
     codex_src = Path(CODEX_SESSIONS_SRC)
@@ -230,12 +206,9 @@ async def run_export_pipeline() -> dict:
         )
         if cx_result.stdout:
             log_lines.extend(cx_result.stdout.strip().split("\n"))
-        new_codex = rebuild_index("codex", str(codex_md))
-        log_lines.append(f"Codex re-indexed: {len(new_codex['projects'])} projects, {len(new_codex['segments'])} segments")
 
-    from index_store import INDEX as cur_claude, CODEX_INDEX as cur_codex
-
-    # Sync Postgres with the rebuilt in-memory index
+    # Sync Postgres with the freshly converted markdown
+    pg_results: dict = {}
     try:
         from load import load_all
         pg_results = await load_all(
@@ -250,58 +223,9 @@ async def run_export_pipeline() -> dict:
 
     return {
         "success": True,
-        "projects": len(cur_claude["projects"]) + len(cur_codex["projects"]),
-        "segments": len(cur_claude["segments"]) + len(cur_codex["segments"]),
+        "sessions": sum(pg_results.values()) if pg_results else 0,
         "log": log_lines,
     }
-
-
-def _get_dir_mtime(directory: str) -> float:
-    """Get the most recent mtime of any file in a directory."""
-    best = 0.0
-    d = Path(directory)
-    if d.exists():
-        for f in d.glob("*.md"):
-            best = max(best, f.stat().st_mtime)
-    return best
-
-
-# ---------------------------------------------------------------------------
-# Watch mode — poll markdown directory for changes
-# ---------------------------------------------------------------------------
-async def _watch_loop():
-    """Background task that re-indexes when markdown files change on disk."""
-    global _last_mtime, _last_codex_mtime
-    _last_mtime = _get_dir_mtime(DEFAULT_MARKDOWN_DIR)
-    _last_codex_mtime = _get_dir_mtime(CODEX_MARKDOWN_DIR)
-
-    while True:
-        await asyncio.sleep(WATCH_INTERVAL)
-        current = _get_dir_mtime(DEFAULT_MARKDOWN_DIR)
-        codex_current = _get_dir_mtime(CODEX_MARKDOWN_DIR)
-        changed = False
-        if current > _last_mtime:
-            _last_mtime = current
-            rebuild_index("claude", DEFAULT_MARKDOWN_DIR)
-            changed = True
-        if codex_current > _last_codex_mtime:
-            _last_codex_mtime = codex_current
-            rebuild_index("codex", CODEX_MARKDOWN_DIR)
-            changed = True
-        if changed:
-            from index_store import INDEX as ci, CODEX_INDEX as cxi
-            _log(f"[watch] Re-indexed: Claude {len(ci['projects'])}p/{len(ci['segments'])}s, Codex {len(cxi['projects'])}p/{len(cxi['segments'])}s")
-            try:
-                from load import load_all
-                await load_all(
-                    DEFAULT_MARKDOWN_DIR,
-                    CODEX_MARKDOWN_DIR,
-                    str(Path(RAW_DIR) / "projects"),
-                    CODEX_SESSIONS_SRC,
-                )
-                _log("[watch] Postgres synced")
-            except Exception as e:
-                _log(f"[watch] Postgres sync failed (non-fatal): {e}")
 
 
 # ---------------------------------------------------------------------------

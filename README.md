@@ -101,14 +101,12 @@ llm-cli-conversation-export/
 │   └── manifest.txt                   # Index of all .jsonl files
 ├── markdown/                          # Generated Markdown files (Claude, one per project)
 ├── markdown_codex/                    # Generated Markdown files (Codex, one per session)
-├── browser_state/                     # Persistent UI state (hidden items, summaries)
-│   ├── browser_state.json             # Soft-delete records
+├── browser_state/                     # Host-side AI summary cache
 │   └── summaries/                     # Cached AI-generated summaries
 └── browser/
     ├── backend/
     │   ├── app.py                     # FastAPI application
     │   ├── parser.py                  # Markdown parser + data models
-    │   ├── state.py                   # Browser state (hide/restore) persistence
     │   └── requirements.txt           # Python deps (fastapi, uvicorn)
     └── frontend/
         ├── package.json               # React + Vite
@@ -260,10 +258,6 @@ SUMMARY_MODEL=claude-opus-4-6 ./export_service.sh
 ```
 
 **If `claude` CLI is not installed:** The watcher won't start and you'll see a note in the terminal. The rest of the app works normally — summaries just show "unavailable."
-
-### Watch Mode
-
-The backend polls the markdown directory every 30 seconds and automatically re-indexes when files change on disk (e.g., if you re-run the export script externally). Configure with `WATCH_INTERVAL` env var (set to `0` to disable).
 
 ## How the File Format Was Inferred
 

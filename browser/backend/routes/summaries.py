@@ -14,9 +14,7 @@ from models import Segment, Session
 
 router = APIRouter()
 
-SUMMARIES_DIR = Path(os.environ.get(
-    "STATE_DIR", "/data/state"
-)) / "summaries"
+SUMMARIES_DIR = Path(os.environ.get("SUMMARY_DIR", "/data/state/summaries"))
 
 ROLLUP_CHUNK_TARGET = 80_000
 

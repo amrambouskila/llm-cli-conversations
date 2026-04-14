@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +8,6 @@ from db import get_db
 from models import Segment, Session, ToolCall
 
 router = APIRouter()
-
-WATCH_INTERVAL = int(os.environ.get("WATCH_INTERVAL", "30"))
 
 
 @router.get("/api/stats")
@@ -103,7 +99,6 @@ async def api_stats(provider: str = "claude", db: AsyncSession = Depends(get_db)
         "total_tool_calls": total_tool_calls,
         "estimated_tokens": est_tokens,
         "monthly": monthly,
-        "watch_interval": WATCH_INTERVAL,
         "hidden": {
             "segments": hidden_segs.scalar_one(),
             "conversations": hidden_convs.scalar_one(),

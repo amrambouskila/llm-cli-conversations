@@ -37,8 +37,8 @@ services:
       - ${CODEX_SESSIONS_DIR:-~/.codex/sessions}:/data/codex-sessions:ro
       # Generated Codex markdown (read-write)
       - ./markdown_codex:/data/markdown_codex
-      # Browser state (hidden items, persists across restarts)
-      - ./browser_state:/data/state
+      # AI summary cache (only remaining file-based state)
+      - ./browser_state/summaries:/data/state/summaries
       # Graphify concept graph output (generated externally via /graphify skill)
       - ./graphify-out:/data/graphify-out
     environment:
@@ -47,7 +47,7 @@ services:
       - CLAUDE_PROJECTS_SRC=/data/claude-projects
       - CODEX_SESSIONS_SRC=/data/codex-sessions
       - CODEX_MARKDOWN_DIR=/data/markdown_codex
-      - STATE_DIR=/data/state
+      - SUMMARY_DIR=/data/state/summaries
       - STATIC_DIR=/app/static
       - GRAPHIFY_OUT=/data/graphify-out
       - DATABASE_URL=postgresql+asyncpg://conversations:conversations@postgres:5432/conversations
