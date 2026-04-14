@@ -253,8 +253,8 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
 
   const costChartOptions = useMemo(() => ({
     ...defaultChartOptions,
-    interaction: { mode: "index", intersect: false, axis: "x" },
-    hover: { mode: "index", intersect: false },
+    interaction: { mode: "nearest", intersect: false, axis: "xy" },
+    hover: { mode: "nearest", intersect: false, axis: "xy" },
     scales: {
       ...defaultChartOptions.scales,
       x: { ...defaultChartOptions.scales.x, stacked: false },

@@ -951,7 +951,7 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 **Pre-condition:** Phase 6 CI pipeline green on `main`. Any test failure during Phase 7 means the refactor is wrong — not the test.
 
-**Execution order:** 7.1 (backend service + repository extraction) → 7.2 (latent bug fixes from 6.5) → 7.3 (frontend component decomposition + ESLint) → 7.4 (CI gate ratchet toward 100%) → 7.5 (final documentation).
+**Execution order:** 7.1 (backend service + repository extraction) → 7.2 (latent bug fixes from 6.5) → 7.3 (frontend component decomposition + ESLint) → 7.4 (CI gate ratchet toward 100%) → 7.5 (cost calculation audit + UI breakdown) → 7.6 (final documentation).
 
 #### 7.1 Backend OOP refactor
 
@@ -1001,15 +1001,89 @@ The 633-line `App.jsx` god component (with 22 `useState` hooks, 10 `useEffect` b
 - `lint-frontend` job added (gated on the new ESLint config from 7.3)
 - Optional: coverage report uploaded to a coverage badge service (Codecov or Shields.io) for README badges
 
-#### 7.5 Final documentation
+#### 7.5 Cost calculation audit + UI breakdown (user-reported anomaly)
+
+**Goal:** Investigate dashboard cost figures that look suspiciously large ("$4,152 total" and "$644 elsewhere" reported by the user), confirm formula correctness against current Anthropic pricing, and improve the UI so the breakdown is transparent whether or not any stored numbers change.
+
+**Background (verified by direct Postgres query during planning):**
+
+| Metric | Value |
+|--------|-------|
+| Total all-time cost across 667 visible sessions | **$4,152.65** (matches the number the user flagged as suspicious) |
+| Max single session | **$497.71** (opus, 307M cache-read tokens on a long-context session) |
+| claude-opus-4-6 | 84 sessions, **$4,077.58** total, $48.54 avg — 98% of total cost |
+| claude-sonnet-4-6 | 103 sessions, $36.68 total, $0.36 avg |
+| claude-haiku-4-5 | 469 sessions, $33.05 total, $0.07 avg |
+| Top-project totals | conversations $1,137; oft-oft-frontend $724; llm-knowledge-base $529; conversations-claude-code-export $509 |
+
+**Cost formula** (`browser/backend/load.py:76-104`, `MODEL_PRICING` at `load.py:46-55`):
+
+```
+cost_usd = input_tokens          × input_price           / 1_000_000
+         + output_tokens         × output_price          / 1_000_000
+         + cache_read_tokens     × input_price × 0.10    / 1_000_000
+         + cache_creation_tokens × input_price           / 1_000_000
+```
+
+Pricing per 1M tokens: opus-4-6 $15/$75, sonnet-4-6 $3/$15, haiku-4-5 $0.80/$4.
+
+**Provisional finding:** the $4,152 figure is likely **internally correct**. Top-session arithmetic decomposes to $0.57 input + $20.53 output + $461.15 cache-read + $15.46 cache-create = $497.71, matching the stored value exactly. The large number reflects genuine heavy Claude Code usage where sessions with 300+ turns against ~1M-token cached contexts accumulate hundreds of millions of cache_read_tokens — that is how Claude actually bills.
+
+Two gaps in the current formula, both of which cause UNDER-estimation (not inflation):
+
+1. **`cache_creation` billed at flat input-price instead of 1.25× (5-minute TTL) or 2× (1-hour TTL)** — Claude Code uses 5-minute cache by default, so real cache-write cost is ~25% higher than the code computes. Net effect on $4,152: small (cache_creation is tiny compared to cache_read).
+2. **1M-context tier (input > 200K in a single call) billed at 1.5× standard rates** — not detected or applied. Net effect: unknown without per-turn data, probably minor.
+
+**The "$644 elsewhere" number** could not be reproduced from current DB state (closest neighbors: $724, $528, $497). First execution step is to find the exact UI location that renders "$644" and determine the filter/rollup producing it — candidates are a date-filtered dashboard view, a specific project's avg, or a MetadataPanel sub-rollup.
+
+##### 7.5.1 Formula correction + test (`browser/backend/load.py`)
+
+- Add `CACHE_WRITE_PREMIUM_5M = 1.25` module constant, multiply `cache_creation_tokens` term by it. (Optional: `CACHE_WRITE_PREMIUM_1H = 2.0` if 1h-TTL detection is ever added.)
+- Add `tests/test_load_cost.py` with canonical cases per model. Example case for opus: 10K input + 20K output + 5M cache read + 100K cache create → assert `_estimate_cost()` returns the expected USD within 1 cent.
+- Re-run `load.py` against current data; expect per-session cost to rise by ~5% on cache-heavy sessions, essentially unchanged on cache-light ones.
+
+##### 7.5.2 Backend breakdown endpoints
+
+- `GET /api/dashboard/summary` response gains a `cost_breakdown` object: `{input_usd, output_usd, cache_read_usd, cache_create_usd}`. Four parallel SQL `SUM(...)` expressions on the filtered session set, each multiplied by the matching per-1M price. Must respect the same global filters (date_from/date_to/provider/project/model) as the headline totals.
+- `GET /api/dashboard/projects` and `GET /api/dashboard/models` responses gain the same 4-way breakdown per row.
+- New `GET /api/sessions/{session_id}/cost-breakdown` returning the 4-tuple for a single session (used by MetadataPanel).
+
+##### 7.5.3 Frontend breakdown UI (`Dashboard.jsx`, `MetadataPanel.jsx`)
+
+- Under the Summary cards row in `Dashboard.jsx`: single-row stacked horizontal bar labeled "Cost breakdown" with four segments (input / output / cache-read / cache-write). Each segment is hover-tooltipped with `$X (Y%)`. Legend to the right.
+- Project breakdown chart: hover tooltip expands to show the 4-way split per row.
+- Model comparison chart: same expansion.
+- `MetadataPanel.jsx`: add a "Cost attribution" section that appears when a session is selected, showing the same 4-way split plus per-bucket token counts.
+
+##### 7.5.4 Transparency widgets (`Dashboard.jsx`)
+
+- New **"Top 5 most expensive sessions"** widget with columns: date, project, model, total cost, **% of cost from cache-read**. That single column immediately surfaces sessions where the bill is driven by long cached-context re-reads vs. genuine content generation — the single most important signal the current UI hides. Clicking a row navigates to the conversations tab for that session.
+- Short explainer panel under the Summary cards with the cost formula in prose plus a link to Anthropic's pricing page, so the totals stop feeling arbitrary.
+- Optional: **"Cost efficiency"** metric per session = `estimated_cost / max(1, output_tokens) × 1000` (dollars per 1K output tokens). Outlier sessions with high ratio indicate cache-read bloat or diminishing-returns runs.
+
+##### 7.5.5 Locate and explain the $644 number
+
+- Search the frontend for every component that renders cost (`Dashboard.jsx`, `MetadataPanel.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `Charts.jsx`) to find which specific view produces "$644". The view's filter set + rollup identify whether it's a per-project total, per-week sum, per-model average, or MetadataPanel sub-rollup.
+- Document the answer in an inline code comment at the call site, and add a screenshot-worthy explainer to the UI if the number is non-obvious (e.g., "$644 this week · $4,152 all-time").
+
+**Acceptance criteria:**
+- `tests/test_load_cost.py` passes with at least 3 canonical cases per model (opus, sonnet, haiku).
+- `sessions.estimated_cost` matches the sum of the 4-way breakdown shown in the UI, per session, to within 1 cent.
+- Dashboard summary renders the stacked cost-breakdown bar, and MetadataPanel renders per-session attribution.
+- "Top 5 most expensive sessions" widget renders; `% from cache_read` column is visible per row.
+- The `$644` number is explained in either a comment or UI label describing exactly what it counts.
+- Master plan §5 gets a new architectural-decision entry documenting the formula, the 1.25× cache-write premium, and the deliberate non-detection of the 1M-context tier.
+
+#### 7.6 Final documentation
 
 - Update this master plan to reflect the post-7.1 service/repository architecture
 - Update §3 Mermaid module-dependency diagram for the new service + repository layout
+- Update §5 architectural decisions to add the cost-formula entry (produced by 7.5)
 - Update README.md with: testing section, CI badges, post-restructure architecture diagram
 - Mark all Phase 7 sub-sections complete in this document
 - Final pass on §13 QA / UAT test plan to ensure every section reflects current behavior post-refactor
 
-**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% on service/repository code. Frontend decomposed with per-component test coverage. Two Phase 6.5-flagged bugs fixed. Documentation reflecting final architecture. **Project complete.**
+**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% on service/repository code. Frontend decomposed with per-component test coverage. Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **Project complete.**
 
 ---
 
@@ -1024,7 +1098,7 @@ The 633-line `App.jsx` god component (with 22 `useState` hooks, 10 `useEffect` b
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
 | 6 — Cleanup, Testing & CI | ✅ Done | All 7 sub-phases shipped: dead code removed (6.1–6.4), 333 backend pytest tests with 2 latent bugs flagged for Phase 7 (6.5), 104 frontend vitest tests across 6 files with 4 unreachable defensive branches flagged for Phase 7 (6.6), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7). Safety net for Phase 7 in place. | Nothing | None (internal quality) |
-| 7 — OOP Restructure & Final Docs | ⏳ Next (final phase) | Backend service+repository extraction with Pydantic response_models (7.1), fix two Phase 6.5-flagged latent bugs via XPASS handoff (7.2), frontend component decomposition + ESLint + tests for 6.6-deferred components (7.3), CI coverage gates ratchet toward 100% (7.4), final documentation pass (7.5) | None (refactor under Phase 6 test/CI safety net — any test failure means the refactor is wrong) | App.jsx decomposed into focused components; per-file test coverage added across all components |
+| 7 — OOP Restructure, Cost Audit & Final Docs | ⏳ Next (final phase) | Backend service+repository extraction with Pydantic response_models (7.1), fix two Phase 6.5-flagged latent bugs via XPASS handoff (7.2), frontend component decomposition + ESLint + tests for 6.6-deferred components (7.3), CI coverage gates ratchet toward 100% (7.4), cost calculation audit + UI breakdown (7.5), final documentation pass (7.6) | None (refactor under Phase 6 test/CI safety net — any test failure means the refactor is wrong; cost audit may slightly adjust `estimated_cost` values if cache-write premium lands) | App.jsx decomposed into focused components; per-file test coverage added across all components; cost-breakdown bar added to Dashboard and MetadataPanel; "Top 5 most expensive sessions" widget |
 
 Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. **Phase 7 is the final phase: a full OOP restructure under that safety net, then project completion.**
 
@@ -1913,4 +1987,4 @@ Not formal benchmarks — just "does it feel right."
 - **Mermaid diagrams should stay current** — when a new component is added, update the module dependency graph.
 - **Every feature must justify itself** as: faster recall OR faster pattern understanding. If it doesn't, it's out of scope.
 - **Graceful degradation is sacred.** Every optional component (Graphify, embeddings, AI summaries) must have a working fallback.
-- **Phase 7 is the final phase.** After 7.1–7.5 land (backend OOP restructure → latent bug fixes → frontend decomposition + ESLint → CI gate ratchet → docs), the project is complete. No more features unless a concrete new use case justifies them.
+- **Phase 7 is the final phase.** After 7.1–7.6 land (backend OOP restructure → latent bug fixes → frontend decomposition + ESLint → CI gate ratchet → cost calculation audit + UI breakdown → final docs), the project is complete. No more features unless a concrete new use case justifies them.
