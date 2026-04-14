@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 import app as app_module
 from app import run_export_pipeline, sync_directory
