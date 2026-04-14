@@ -930,7 +930,7 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 - **`.gitignore` consolidation**: merged the broader patterns from the parent workspace template into the subproject `.gitignore` — IDE (.idea, .vscode, *.swp), env files, expanded Python (*.py[cod], *.pyo, venv/, *.egg-info/), Node (*.tsbuildinfo), Docker overrides. Keeps the project-specific data-dir entries (raw/, markdown/, etc.).
 
 **What is intentionally NOT yet enforced (tracked for Phase 7):**
-- Frontend ESLint — no eslint config exists; the master plan §6.7's `pnpm lint` line was aspirational. Adding eslint is a feature add and the codebase (notably 30K-line `App.jsx`) would surface dozens of issues. Belongs in Phase 7 alongside component decomposition.
+- Frontend ESLint — no eslint config exists; the master plan §6.7's `pnpm lint` line was aspirational. Adding eslint is a feature add and the codebase (notably the 633-line `App.jsx` god component, plus untested `Dashboard.jsx` at 704 LOC) would surface dozens of issues. Belongs in Phase 7 alongside component decomposition.
 - Per-file thresholds for `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx` — these are the components 6.6 deliberately deferred. Their threshold entries land as Phase 7 extracts and tests them.
 - The two latent `routes/segments.py` bugs from 6.5 (`func.literal`, date-range cast) — still `xfail(strict=True)`; flip to XPASS and force xfail-removal when Phase 7 fixes them.
 - Backend route-module coverage — currently low because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task. Tests prove handler behavior via real DB state assertions but can't increase the line counter. Will resolve naturally in Phase 7 when route handlers become thin shells calling extracted services (services get directly traced).
@@ -947,7 +947,7 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 **Goal:** Refactor the entire backend to proper OOP patterns (service layer + repository pattern + dependency injection). Decompose the over-coupled frontend into focused, individually tested components. Add ESLint to the frontend pipeline. Fix the two latent backend bugs flagged by Phase 6.5. Ratchet CI coverage gates toward 100% as decomposition lands. Finalize all documentation. **Project completes here.**
 
-**Why a separate phase rather than 6.8 / 6.9 sub-sections:** Phase 6 built the safety net (tests, lint, CI, coverage gates). Phase 7 is a *structural restructure* of the entire codebase under that safety net — it touches every backend module, every route handler, and most frontend components. The scope and risk profile of a service/repository extraction plus a 30K-LoC frontend god-component decomposition is qualitatively different from anything in Phase 6 and deserves its own phase boundary, its own planning, and its own commit history. Treating it as "6.8" understated the work; treating it as Phase 7 forces appropriate planning rigor.
+**Why a separate phase rather than 6.8 / 6.9 sub-sections:** Phase 6 built the safety net (tests, lint, CI, coverage gates). Phase 7 is a *structural restructure* of the entire codebase under that safety net — it touches every backend module, every route handler, and most frontend components. The scope and risk profile of a service/repository extraction plus the 633-line `App.jsx` god-component decomposition (which also drives tests for 9 previously-untested components totalling ~2200 LOC: `Dashboard.jsx`, `ConceptGraph.jsx`, `SummaryPanel.jsx`, `RequestList.jsx`, `Charts.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `ContentViewer.jsx`) is qualitatively different from anything in Phase 6 and deserves its own phase boundary, its own planning, and its own commit history. Treating it as "6.8" understated the work; treating it as Phase 7 forces appropriate planning rigor.
 
 **Pre-condition:** Phase 6 CI pipeline green on `main`. Any test failure during Phase 7 means the refactor is wrong — not the test.
 
@@ -987,7 +987,7 @@ Both bugs are in `routes/segments.py`, captured as `@pytest.mark.xfail(strict=Tr
 
 #### 7.3 Frontend component decomposition + ESLint
 
-The 30K-LoC `App.jsx` god component is the largest tech debt in the frontend. Phase 7.3 decomposes it and adds tests for the components Phase 6.6 deferred.
+The 633-line `App.jsx` god component (with 22 `useState` hooks, 10 `useEffect` blocks, and 15 `useCallback` definitions) is the largest structural tech debt in the frontend. Phase 7.3 decomposes it and adds tests for the components Phase 6.6 deferred.
 
 - **Decompose `App.jsx`** into focused components: `Header`, `SearchBar`, `ProjectsPane`, `RequestsPane`, `ContentPane`, `MetadataPane`, `KeyboardShortcuts` (custom hook), `ResizeHandles` (custom hook). Each lives in its own file per OOP isolation rule. State management may move to a Zustand store if app-state lifting becomes painful.
 - **Add tests for the 6.6-deferred components**: `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx`. Per-file thresholds added to `vitest.config.js` as each lands.

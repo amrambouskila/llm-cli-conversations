@@ -244,6 +244,8 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
       borderWidth: 2,
       fill: false,
       pointRadius: 0,
+      pointHoverRadius: 5,
+      pointHitRadius: 10,
       tension: 0.25,
     }));
     return { labels, datasets };
@@ -251,7 +253,8 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
 
   const costChartOptions = useMemo(() => ({
     ...defaultChartOptions,
-    interaction: { mode: "nearest", intersect: true, axis: "xy" },
+    interaction: { mode: "index", intersect: false, axis: "x" },
+    hover: { mode: "index", intersect: false },
     scales: {
       ...defaultChartOptions.scales,
       x: { ...defaultChartOptions.scales.x, stacked: false },

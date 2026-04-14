@@ -14,8 +14,8 @@ This is NOT a conversation browser or archive museum. See @DESIGN.md for the ful
 ```
 Raw JSONL (Claude/Codex CLI)
   → Python parsers (convert_*.py) → Markdown files
-  → FastAPI backend (parser.py) → In-memory index → REST API
-  → React frontend (browser/frontend/) → 3-pane UI
+  → FastAPI backend + SQLAlchemy 2.0 async → PostgreSQL 16 (pgvector + pg_trgm) → REST API
+  → React frontend (browser/frontend/) → 3-pane UI + Dashboard + Knowledge Graph tabs
 ```
 
 ### Key Paths
@@ -27,16 +27,16 @@ Raw JSONL (Claude/Codex CLI)
 - `browser/backend/models.py` — SQLAlchemy 2.0 declarative models (all 7 tables, `conversations` schema)
 - `browser/backend/schemas.py` — Pydantic v2 request/response models (`from_attributes=True`)
 - `browser/backend/db.py` — SQLAlchemy async engine + session maker, `init_db()` creates extensions/schema/tables
-- `browser/backend/index_store.py` — In-memory index globals (INDEX, CODEX_INDEX) + get_index()
 - `browser/backend/search.py` — Query parser: extracts structured filter prefixes from free text, returns `ParsedQuery` Pydantic model
-- `browser/backend/routes/` — APIRouter modules (projects, segments, conversations, stats, summaries, visibility)
+- `browser/backend/routes/` — APIRouter modules (projects, segments, conversations, stats, summaries, visibility, dashboard)
 - `browser/backend/parser.py` — Markdown → in-memory index builder
 - `browser/backend/jsonl_reader.py` — Extracts model + token usage from raw JSONL files
 - `browser/backend/load.py` — Merges parser + JSONL data, upserts into Postgres
 - `browser/backend/topics.py` — Heuristic topic extraction per session
 - `browser/backend/classify.py` — Heuristic session type classification
 - `browser/backend/import_graph.py` — Optional Graphify concept graph import
-- `browser/backend/state.py` — Persistent hide/restore state (file-based, pre-Postgres)
+- `browser/backend/embed.py` — ONNX Runtime wrapper for `all-MiniLM-L6-v2` session embeddings (Phase 5)
+- `browser/backend/graph_extract.py` — Concept extraction pipeline (claude CLI + graphifyy, Phase 4)
 - `browser/frontend/src/App.jsx` — React root component
 - `browser/frontend/src/components/` — UI components (ProjectList, RequestList, SearchResults, FilterChips, ContentViewer, MetadataPanel, Charts, SummaryPanel)
 
@@ -60,7 +60,7 @@ Raw JSONL (Claude/Codex CLI)
 3. `parser.py` splits markdown on `>>>USER_REQUEST<<<` delimiters into segments
 4. Segments grouped by conversation_id into sessions
 5. Metrics computed: char/word/line/token counts, tool breakdowns
-6. In-memory index served via REST API at `/api/*` (current, being migrated)
+6. All API endpoints read from Postgres via SQLAlchemy async queries (Phase 2+). In-memory index retained only for the export pipeline's use of `parser.build_index()`.
 7. `jsonl_reader.py` extracts model names + actual token usage from raw JSONL
 8. `load.py` merges parser + JSONL data and upserts into Postgres (sessions, segments, tool_calls, session_topics)
 9. `topics.py` + `classify.py` run heuristic topic extraction and session type classification
@@ -68,7 +68,7 @@ Raw JSONL (Claude/Codex CLI)
 
 ## Current State
 
-The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 5 of the v2 migration are complete:
+The conversation browser is functional — parsers, FastAPI backend, React UI, Docker deployment all work. Phases 0 through 6 of the v2 migration are complete:
 
 - **Phase 0 (done):** PostgreSQL 16 with pgvector running in Docker Compose. Backend split into modular routes. SQLAlchemy 2.0 async models define the `conversations` schema (7 tables). Pydantic v2 schemas ready for API layer. Database initialized on app startup via `init_db()`.
 - **Phase 1 (done):** Data loader pipeline (`load.py`) populates Postgres from parsed markdown + raw JSONL metadata. Heuristic topic extraction and session type classification. Graphify concept graph import (via `graphifyy` package). Wired into `/api/update`, watch loop, and app startup.
@@ -76,8 +76,9 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 - **Phase 3 (done):** Search returns session-level results with metadata filter parsing (`project:`, `model:`, `tool:`, `topic:`, `after:`, `before:`, `cost:>`, `turns:>`). Frontend renders session cards with snippet highlighting, filter chips with autocomplete dropdowns, and click-to-navigate. Related sessions endpoint via Graphify concept graph (graceful when no data). New files: `search.py`, `SearchResults.jsx`, `FilterChips.jsx`.
 - **Phase 4 (done):** KPI dashboard with 6 chart types (Chart.js), activity heatmap (custom SVG), anomaly table, global filters with click-to-filter. Knowledge graph in its own full-screen tab (d3 force-directed layout with interactive settings panel, `localStorage` persistence). Automated concept extraction pipeline (`graph_extract.py` via `claude -p --system-prompt` + graphifyy clustering) auto-starts on service launch. New files: `routes/dashboard.py`, `Dashboard.jsx`, `Heatmap.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `graph_extract.py`, `graph_watcher.bat`.
 - **Phase 5 (done):** Hybrid semantic + keyword search. `embed.py` loads `sentence-transformers/all-MiniLM-L6-v2` via ONNX Runtime (downloaded on first run, ~90MB, cached). `load.py` incrementally embeds sessions where `embedding IS NULL`. `api_search` runs tsvector + vector legs, merges via Reciprocal Rank Fusion (k=60, normalized to [0,1]), then applies `0.6*rrf + 0.2*recency + 0.1*length + 0.1*exact_match` scoring. Optional community re-ranking boosts sessions sharing Leiden communities with the top result (`+0.05 * overlap_count`). Relevance bar per result card, two-part status badges (Hybrid/Keyword + Graph/No Graph) in the search bar, `/api/search/status` endpoint for polling. Timestamped launcher logs. New files: `browser/backend/embed.py`. New dependencies: `onnxruntime`, `tokenizers`, `huggingface-hub`, `numpy` + `libgomp1` system package in Dockerfile.
+- **Phase 6 (done):** Test + CI safety net for the Phase 7 restructure. Dead code removed: `index_store.py`, `state.py`, `INDEX`/`CODEX_INDEX` globals, `WATCH_INTERVAL`, `_watch_loop` (6.1-6.2). Docker volume narrowed to `browser_state/summaries` only (6.3). Launcher scripts (`export_service.sh`, `.bat`) gained `sync_postgres` helper and `[r]` restart loop with full parity (6.4). Backend: 348 pytest tests across 20 files via pytest-asyncio + testcontainers/pgvector + NullPool engine swap + deterministic seed fixtures (6.5). Frontend: 104 vitest tests across 6 files via jsdom + @testing-library/react + @testing-library/user-event (6.6). Two pre-existing bugs in `routes/segments.py` (`func.literal(1.0)` at line 379, and date `.isoformat()` cast at lines 252/254) captured as `xfail(strict=True)` for Phase 7 XPASS handoff. GitHub Actions `ci.yml` (lint-backend → test-backend → test-frontend → build-frontend → docker-build on main/staging/dev + PR + manual dispatch, per-ref concurrency, `--cov-fail-under=70` backend gate, per-file frontend thresholds in `vitest.config.js`). `release.yml` for manual semver bumps of `browser/frontend/package.json`. Ruff fully green after 272-error cleanup (6.7).
 
-### Next: v2 Upgrades (Phases 6 → 7)
+### Next: v2 Upgrade Phase 7 (final phase)
 
 - @DESIGN.md — product direction, schema, dashboard spec, anti-bloat guardrails
 - @docs/CONVERSATIONS_MASTER_PLAN.md — **single source of truth** for product direction, architectural decisions, phased migration (Phases 0-7), phase summary table, anti-bloat guardrails, and the full QA/UAT test plan. Supersedes the old `PLAN.md` and `docs/test_plan.md`.
@@ -105,10 +106,10 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 
 ### v2 Targets (Project Completion)
 
-- [ ] Dead code removal (index_store.py, state.py, in-memory globals)
-- [ ] OOP refactoring: service layer + repository pattern
-- [ ] Full unit + integration test suite (pytest + vitest)
-- [ ] GitHub Actions CI pipeline (lint, test, coverage, build, docker-build)
+- [x] Dead code removal (Phase 6.1-6.2 — `index_store.py`, `state.py`, `INDEX`, `CODEX_INDEX`, `WATCH_INTERVAL`, `_watch_loop` all removed)
+- [ ] OOP refactoring: service layer + repository pattern (Phase 7.1)
+- [x] Full unit + integration test suite (Phase 6.5-6.6 — 348 pytest + 104 vitest across 26 files)
+- [x] GitHub Actions CI pipeline (Phase 6.7 — `ci.yml` with lint/test/coverage/build/docker-build, `release.yml` for semver bumps)
 
 ## Development
 
