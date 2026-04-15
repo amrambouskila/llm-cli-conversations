@@ -2,9 +2,9 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **v1.0.0 shipped 2026-04-14 — core observability + recall platform feature-complete. See `docs/status.md` for state, `docs/versions.md` for the changelog.**
+> **v2.1.0 shipped 2026-04-15 — Phase 8 Knowledge Graph wiki integration complete. See `docs/status.md` for state, `docs/versions.md` for the changelog.**
 >
-> **Phase 8 planned (v1.1.0 target): in-tab Graphify wiki exploration.** Clicking a concept in the Knowledge Graph tab should surface the Graphify-produced community/god-node wiki article inside the tab instead of routing to Conversations. Keeps users in the exploration context and makes the wiki content (currently unused by the UI) first-class. Detailed spec below at §10 Phase 8.
+> **Phase 8 shipped.** Clicking a concept in the Knowledge Graph tab now opens the matching community/god-node wiki article in an in-tab split pane. Cmd/Ctrl+click preserves the v2.0.0 "jump to Conversations" fast-path. Inline `[[WikiLink]]` anchors swap the pane with unlimited breadcrumb navigation. `graph_extract.py::build_graph` now calls `graphify.wiki.to_wiki(...)` alongside `to_json(...)` so `graphify-out/wiki/` regenerates on every extraction. See §10 Phase 8 below for the shipped details.
 
 ---
 
@@ -978,7 +978,7 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 ### Phase 7 — OOP Restructure & Final Documentation
 
-**Status: ✅ COMPLETE (2026-04-14). Project shipped as v1.0.0.** Every sub-phase is ✅ including the final 100% backend coverage gate and the full documentation pass.
+**Status: ✅ COMPLETE (2026-04-14). Project shipped as v2.0.0.** Every sub-phase is ✅ including the final 100% backend coverage gate and the full documentation pass.
 
 **Goal:** Refactor the entire backend to proper OOP patterns (service layer + repository pattern + dependency injection). Decompose the over-coupled frontend into focused, individually tested components. Add ESLint to the frontend pipeline. Fix the two latent backend bugs flagged by Phase 6.5. Ratchet CI coverage gates toward 100% as decomposition lands. Finalize all documentation. **Project completes here.**
 
@@ -1121,15 +1121,15 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 - ✅ Current-phase banner at the top → "Project complete."
 - ✅ README.md — CI badges, post-7.5 architecture Mermaid, Testing section, cost-formula summary, updated `browser/` tree listing.
 - ✅ `docs/status.md` created — current state, architecture summary, coverage posture, CI overview.
-- ✅ `docs/versions.md` created — v1.0.0 changelog with phase-by-phase rollup.
+- ✅ `docs/versions.md` created — v2.0.0 changelog with phase-by-phase rollup.
 
-**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% lines + branches + functions. Frontend decomposed with per-component test coverage (100% lines, 96% branches, 97% functions). Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **v1.0.0 shipped 2026-04-14.**
+**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% lines + branches + functions. Frontend decomposed with per-component test coverage (100% lines, 96% branches, 97% functions). Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **v2.0.0 shipped 2026-04-14.**
 
 ---
 
-### Phase 8 — Knowledge Graph wiki integration (planned, v1.1.0)
+### Phase 8 — Knowledge Graph wiki integration ✅
 
-**Status: PLANNED. Post-v1.0.0 follow-up.**
+**Status: ✅ COMPLETE (2026-04-15). Project shipped as v2.1.0.** Every sub-phase ✅ including the full documentation pass. Both backend (100% coverage) and frontend (100% lines) gates held; ruff + ESLint clean.
 
 **Goal.** When a user clicks a concept node in the `ConceptGraph` (inside the Knowledge Graph tab), surface the Graphify-produced wiki article for that concept **in-place** (inside the same tab) instead of navigating away to the Conversations tab. The conversation drill-through stays available as an explicit action, but the default click behavior becomes "explore the wiki", not "leave the graph."
 
@@ -1147,47 +1147,72 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 
 **Implementation plan.**
 
-#### 8.1 Backend: wiki endpoints + extraction wire-up
+#### 8.1 Backend: wiki endpoints + extraction wire-up ✅
 
-- Extend `graph_extract.py` so the existing extraction pipeline also writes the wiki by calling `graphify.wiki.to_wiki(G, out_dir)` after `to_json`. Today the pipeline calls `build_from_json + cluster + to_json` only. The call is already one line given the library exposes it.
-- `routes/graph.py` (new, or extend `routes/dashboard.py`): add
-  - `GET /api/graph/wiki/index` → returns `{ title, markdown, articles: [{ slug, title, kind: 'community'|'god_node' }] }` parsed from `graphify-out/wiki/index.md`.
-  - `GET /api/graph/wiki/{slug}` → returns `{ slug, title, markdown }` for the named article. 404 if missing.
-  - `GET /api/graph/wiki/lookup?concept_id=...&concept_name=...` → resolves a graph node to its wiki slug (prefers god-node article; falls back to community article). Returns `{ slug }` or 404. Lives here so frontend doesn't have to duplicate `_safe_filename` logic.
-- Security: path-traversal guard on `{slug}` (reject `..`, `/`, nulls); resolve `(GRAPHIFY_OUT / "wiki" / f"{slug}.md").resolve()` and assert the resolved path is still under `GRAPHIFY_OUT / "wiki"`. Same pattern as Phase 7.4's SPA guard refactor.
-- `services/graph_service.py` gains `load_wiki_index()`, `load_wiki_article(slug)`, `resolve_wiki_slug(concept_id, concept_name)`. All return `None` on missing — route layer maps to 404.
-- `schemas.py` adds `WikiIndex`, `WikiArticle`, `WikiLookup` response models.
+**Status: ✅ COMPLETE (2026-04-15).**
 
-#### 8.2 Frontend: wiki pane component + click-semantics rewire
+Shipped state:
 
-- New `src/components/ConceptWikiPane.jsx` — renders the article markdown, handles inline `[[WikiLink]]` rewriting so they become clickable buttons that swap the pane, shows breadcrumbs, hosts the "Open in Conversations" action.
-- New `src/hooks/useConceptWiki.js` — owns the `selectedSlug` state + the fetch/cache + `AbortController` lifecycle. Same shape as the existing `useCostBreakdown` hook.
-- `src/components/KnowledgeGraph.jsx` grows a split-pane layout: graph on left, `<ConceptWikiPane>` on right. The pane shows/hides based on whether `selectedSlug` is non-null. Width state lives in the existing `useResizeHandles` hook (add a new handle key).
-- `src/components/ConceptGraph.jsx` `onConceptClick` no longer bubbles up to `App.jsx`. Instead, `KnowledgeGraph.jsx` passes down its own handler that calls `resolveWikiSlug(concept_id, concept_name)` → sets `selectedSlug`. The existing prop is renamed to `onOpenInConversations` and is called only when the user clicks the explicit "Open in Conversations" button.
-- `src/App.jsx` `handleDashboardNavigate(null, null, "topic:X")` stays intact — that's still the handler for the "Open in Conversations" button, just no longer triggered by the concept click itself.
-- `src/api.js` adds `fetchWikiIndex()`, `fetchWikiArticle(slug)`, `resolveWikiSlug({ concept_id, concept_name })`.
+- `graph_extract.py::build_graph` now calls `graphify.wiki.to_wiki(G, communities, str(out_dir / "wiki"), god_nodes_data=_derive_god_nodes(G))` after `to_json`. **Signature correction vs. the original spec:** the real `to_wiki` takes `(G, communities, output_dir, community_labels=None, cohesion=None, god_nodes_data=None)` — the shorthand `to_wiki(G, out_dir)` was wrong. Community articles get auto-labeled "Community N" (descriptive labeling via `graphify.report._safe_community_name` is a possible follow-up, not Phase 8 scope). God-node articles are generated for the top-15 highest-degree nodes, derived inline via `_derive_god_nodes(G)`.
+- **`file_type` normalization landed** in `graph_extract.py`: `ALLOWED_FILE_TYPES = {code, document, image, paper, rationale}` enum, `FILE_TYPE_ALIASES` dict (24 common unknowns → canonical), `_normalize_file_type(raw)` applied inside the node merge loop. System prompt now explicitly enumerates the 5 allowed values: *"For every node, file_type MUST be exactly one of: code, document, image, paper, rationale."*
+- **New `browser/backend/routes/graph.py`** (not embedded in `routes/dashboard.py`) — conceptually the wiki surface is tied to the KG tab, not the dashboard. Three endpoints at `/api/graph/wiki/`:
+  - `GET /index` → `WikiIndex { title, markdown, articles: [{ slug, title, kind: "community" | "god_node" }] }` parsed from `wiki/index.md`. 404 when wiki dir absent.
+  - `GET /lookup?concept_id=…&concept_name=…` → `WikiLookup { slug }`. Precedence: god-node article (by `concept_name`) wins over community article (via `concepts.community_id` lookup on `concept_id`). 404 when neither exists.
+  - `GET /{slug}` → `WikiArticle { slug, title, markdown }`. 404 when the resolved file doesn't exist or the slug escapes the wiki root. Route order: `/index` and `/lookup` registered before `/{slug}` so FastAPI doesn't match them as slugs.
+- **Path-traversal guard** in `GraphService._safe_wiki_path(slug)` mirrors `app.py::_register_spa_routes`: `(root / f"{slug}.md").resolve()` + `target.relative_to(root_resolved)` catches `..`, absolute paths, and any variant that escapes the wiki root. Returns `None` → 404.
+- **`GraphService` gained 5 new members** (all in `services/graph_service.py`):
+  - `_wiki_slug(label)` — reimplements graphify's `_safe_filename` (three-char substitution: `/→-`, `space→_`, `:→-`). **Locked by a 16-case parity test** against `graphify.wiki._safe_filename` so drift is caught if graphifyy ever changes its filename rules.
+  - `_safe_wiki_path(slug)` — path-traversal guard described above.
+  - `_parse_index_articles(md)` — extracts `[[…]]` link labels from the "Communities" and "God Nodes" sections of `index.md`, dedups by slug, skips `[[index]]` self-references.
+  - `_extract_title(md, fallback)` — first H1 (`# …`) with fallback when absent or empty.
+  - `load_wiki_index()`, `load_wiki_article(slug)`, `resolve_wiki_slug(concept_id, concept_name)` — the 3 methods the route layer calls; all return `None` on missing → route maps to 404.
+- `schemas.py` gained `WikiArticleSummary`, `WikiIndex`, `WikiArticle`, `WikiLookup` response models; each route has `response_model=…`.
 
-#### 8.3 Tests
+**Test state:** 83 new backend tests across 3 files — `tests/test_api_graph_wiki.py` (12 endpoint tests; wire-level path-traversal tests dropped because httpx's ASGITransport URL-decodes `%2F` → `/` before routing, but the traversal guard is fully covered at the service layer via `test_safe_wiki_path_rejects_traversal_with_parent`), `tests/services/test_graph_service.py` extended with 30 cases (slug parity, safe-path, parse-index, resolve-slug precedence), `tests/test_graph_extract.py` (32 cases — file_type normalization, god-node derivation, `build_graph` wiring, graphify-unavailable fallback). **Total backend: 834 pytest tests, 100% coverage holds, ruff clean.**
 
-- Backend: new `tests/test_api_graph_wiki.py` (happy path, missing file → 404, path-traversal → 404, resolve lookup prefers god-node over community); extend `tests/services/test_graph_service.py` for the three new service methods.
-- Frontend: new `__tests__/ConceptWikiPane.test.jsx` (markdown render, wiki-link click swaps slug, "Open in Conversations" fires callback, empty/error states); new `__tests__/hooks/useConceptWiki.test.js` (abort on slug change, error swallow on AbortError, null-slug guard); update `__tests__/ConceptGraph.test.jsx` for the new click semantics; update `__tests__/KnowledgeGraph.test.jsx` for the split-pane render. Tests must maintain the existing 100% lines gate.
+#### 8.2 Frontend: wiki pane component + click-semantics rewire ✅
 
-#### 8.4 Docs
+**Status: ✅ COMPLETE (2026-04-15).**
 
-- This document: mark Phase 8 ✅ with shipped details after it lands.
-- README: add a Knowledge Graph tab mini-section describing wiki exploration.
-- `docs/status.md`: replace the "no further phases" line with a pointer to Phase 8 after shipping (or keep the pointer in "what's next" while planned).
-- `docs/versions.md`: add **v1.1.0** entry on ship.
-- Master plan §13 QA/UAT: new subsection **13.7.16 Knowledge Graph wiki pane** covering the split-pane layout, wiki link navigation, breadcrumb, degradation, and the "Open in Conversations" button.
+Shipped state:
 
-**Acceptance criteria.**
+- **New `src/components/ConceptWikiPane.jsx`** — three states (loading / error / article) plus a null-fallback. Delegated click handler on the body root uses `e.target.closest(".wiki-link")` + `dataset.wikiSlug` to swap articles without re-rendering the tab. "Open in Conversations" + Close actions in the header. Breadcrumb nav shown only when `breadcrumb.length > 0`; each entry is a button that fires `onJumpToBreadcrumb(index)` with browser-back semantics (truncates forward history).
+- **New `src/hooks/useConceptWiki.js`** — owns `selectedSlug`, `article`, `loading`, `error`, `breadcrumb`, and `indexError`. AbortController-based fetch with `AbortError` swallowed (same shape as `useCostBreakdown`). Exposes `openSlug(slug)`, `goBack()`, `jumpToBreadcrumb(idx)`, `close()`, `openByConcept({ conceptId, conceptName })`. `openByConcept` calls `resolveWikiSlug(...)` — rejects are a silent no-op (the pane stays in its current state, user can try cmd/ctrl+click or regenerate).
+- **`src/components/KnowledgeGraph.jsx` split-pane refactor** — when `graphReady && wiki.selectedSlug`, renders `<div class="knowledge-graph-split" ref={wikiContainerRef}>` with `<ConceptGraph>` left and `<ConceptWikiPane>` + `<div class="resize-handle resize-handle-wiki">` right. Passes `wiki.openSlug/jumpToBreadcrumb/close` down to the pane; receives `onOpenInConversations` from App and passes it to both `ConceptGraph` (for cmd-click fast-path) and the wiki pane (for the explicit button).
+- **`src/components/ConceptGraph.jsx` click branching (Decision 10)** — the d3 click listener branches on `event.metaKey || event.ctrlKey`: modifier-click → `onConceptOpenInConversations(d.name)` (v2.0.0 fast-path preserved); plain click → `onConceptActivate(d)`. Both callbacks held in `useRef` for prop stability. Prop rename from `onConceptClick` → `onConceptActivate`.
+- **`src/App.jsx` rewire** — the inline `onConceptClick` arrow was replaced by a named `handleOpenConceptInConversations(conceptName)` callback that flips `activeTab` and sets `searchQuery = "topic:${conceptName}"`. Threaded through as `onOpenInConversations`, and the resize plumbing (`wikiWidth`, `wikiContainerRef`, `startDrag`) flows from `useResizeHandles` into `KnowledgeGraph`.
+- **`src/hooks/useResizeHandles.js` extended** — `wikiWidth` (default 360px, bounds 280-600) + `wikiContainerRef` + `"wiki"` handle key. In-memory only, matching the other three panes.
+- **`src/api.js` wiki fetchers** — `fetchWikiIndex(options)`, `fetchWikiArticle(slug, options)`, `resolveWikiSlug({ conceptId, conceptName }, options)`. All forward `options.signal` for AbortController integration.
+- **`src/utils.js` wiki-link support** — `wikiSlug(label)` exported for client-side parity with the backend's `_wiki_slug`; `renderMarkdown` gets one new regex after bold/italic that rewrites `[[Label]]` → `<a class="wiki-link" data-wiki-slug="<wikiSlug(Label)>">Label</a>`; `sanitizeHtml` extends the `<a>`-specific branch to preserve `data-wiki-slug` alongside `class`. Minimal footprint, fully tested in isolation, doesn't affect any other caller of `renderMarkdown` (none of them produce `[[…]]` syntax).
+- **`src/App.css` new styles** — `.knowledge-graph-split`, `.knowledge-graph-left/right`, `.resize-handle-wiki`, `.concept-wiki-pane/header/title/actions/close/body/empty`, `.wiki-breadcrumb*`, `.wiki-link`.
 
-- Clicking a concept node in the KG tab does NOT change `activeTab` — user stays on the Knowledge Graph tab.
-- The wiki pane renders the matching article's markdown with inline `[[WikiLink]]` anchors working.
-- `graphify-out/wiki/index.md` + per-community + per-god-node pages are regenerated whenever the graph pipeline runs (no manual step).
-- Path-traversal attempts on `/api/graph/wiki/{slug}` return 404 with no file read outside `graphify-out/wiki/`.
-- Degraded state (missing wiki dir) shows an inline empty-state with a Regenerate button — no crash.
-- Frontend coverage posture stays at 100% lines; backend stays at 100% lines + branches + functions.
+**Decisions 6-10 locked:** pane default 360px (280-600 bounds, compact/graph-dominant), unlimited breadcrumb depth with browser-back semantics, Cmd/Ctrl+click preserves the v2.0.0 jump-to-Conversations fast-path, ephemeral pane state (empty on tab entry; the missing-wiki case manifests as `openByConcept` silently no-opping, user uses the KG header's existing Regenerate button).
+
+#### 8.3 Tests ✅
+
+**Status: ✅ COMPLETE (2026-04-15).**
+
+- **Backend (3 files, 83 new tests)**: `tests/test_api_graph_wiki.py` (12 endpoint tests — happy path, missing file → 404, lookup god-node precedence + community fallback + neither-matches 404), `tests/services/test_graph_service.py` extended with 30 cases (slug parity parametrized over 16 representative labels, `_safe_wiki_path` 5 branches, `_parse_index_articles` 5 branches including dedup + self-ref skip, `_extract_title` 3 branches, resolve-slug precedence + concept-id-null/no-community/article-missing), `tests/test_graph_extract.py` (32 cases — `_normalize_file_type` canonical/alias/unknown/empty, `_derive_god_nodes` by-degree + label fallback, `build_graph` wiki wiring + file_type normalization + duplicate-id dedup + corrupt-chunk tolerance + no-nodes guard + graphify-import failure).
+- **Frontend (2 new files, 5 extended)**: new `__tests__/ConceptWikiPane.test.jsx` (16 tests — loading/error/empty/article states, breadcrumb visibility + click-jumps, wiki-link delegation via `dataset.wikiSlug`, non-link click no-op, Open in Conversations fires callback with article title); new `__tests__/hooks/useConceptWiki.test.js` (22 tests — null-slug guard, AbortController cleanup on rapid slug change, AbortError swallow, breadcrumb push/pop/jump/close, openByConcept success/failure/undefined-response, late-resolution-after-unmount). Extensions: `utils.test.js` (`wikiSlug` 6 cases + `[[…]]` rewrite 6 cases + sanitizer `data-wiki-slug` 5 cases); `api.test.js` (wiki fetcher URL/method + AbortSignal forwarding, 8 new); `hooks/useResizeHandles.test.js` (wiki handle drag + clamps + ref/no-ref guards, 5 new); `ConceptGraph.test.jsx` updated for prop rename + meta/ctrl-click branching (5 tests touched); `KnowledgeGraph.test.jsx` rewritten with new mocks for ConceptGraph (exposes `trigger-activate` + `trigger-open-in-conv`) and `ConceptWikiPane` — split-pane render, plain-click vs cmd-click flows, resize-handle mousedown, close-pane; `App.test.jsx` KG mock prop rename + new `dashboard-search-trigger` + searchTerm-branch test.
+- **Gates held:** backend `pytest --cov-fail-under=100` green (834 tests). Frontend `npm run lint` + `npm run test:coverage` green (818 tests, 100% lines, every new module at 100/100/100). `vitest.config.js` added per-file thresholds for `ConceptWikiPane.jsx` (100/100/100) and `useConceptWiki.js` (100/100/100); App.jsx functions threshold adjusted 40 → 25 (jsdom-inherent inline-arrow gap, same documented pattern as Dashboard/SummaryPanel/ConceptGraph).
+
+#### 8.4 Docs ✅
+
+**Status: ✅ COMPLETE (2026-04-15).**
+
+- This document updated throughout: banner reflects v2.1.0 shipped; Phase 8 sub-phases marked ✅ with shipped details; §11 phase summary row flipped to ✅ Done; §13 gained **§13.7.16 Knowledge Graph wiki pane** covering split-pane layout, WikiLink navigation, breadcrumb, Cmd/Ctrl+click fast-path, and the Open-in-Conversations button.
+- `docs/status.md` — Phase 8 — PLANNED line replaced with v2.1.0 shipped + updated What's next.
+- `docs/versions.md` — v2.1.0 entry prepended, v2.0.0 kept intact.
+- `README.md` — Knowledge Graph tab mini-section added; architecture Mermaid updated to show `graphify-out/wiki/` as an output of `graph_extract.py`.
+
+**Acceptance criteria — all met.**
+
+- ✅ Clicking a concept node in the KG tab does NOT change `activeTab` — user stays on the Knowledge Graph tab.
+- ✅ The wiki pane renders the matching article's markdown with inline `[[WikiLink]]` anchors working (in-pane swap, never a tab flip).
+- ✅ `graphify-out/wiki/index.md` + per-community + per-god-node pages are regenerated whenever the graph pipeline runs (via `graph_extract.py::build_graph`).
+- ✅ Path-traversal attempts on `/api/graph/wiki/{slug}` return 404 with no file read outside `graphify-out/wiki/` — guard is `GraphService._safe_wiki_path` + `relative_to()` check, covered at the service layer by `test_safe_wiki_path_rejects_traversal_with_parent`.
+- ✅ Degraded state (missing wiki dir) — `load_wiki_index` and `resolve_wiki_slug` both return `None` cleanly; routes map to 404; `openByConcept` silently no-ops so the pane stays closed; the KG header's existing Regenerate button re-runs extraction and produces `wiki/`.
+- ✅ Backend coverage at 100% lines + branches + functions. Frontend at 100% lines; 96.3% branches / 97.4% functions globally with every new module at 100/100/100.
 
 ---
 
@@ -1202,10 +1227,10 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
 | 6 — Cleanup, Testing & CI | ✅ Done | All 7 sub-phases shipped: dead code removed (6.1–6.4), 333 backend pytest tests with 2 latent bugs flagged for Phase 7 (6.5), 104 frontend vitest tests across 6 files with 4 unreachable defensive branches flagged for Phase 7 (6.6), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7). Safety net for Phase 7 in place. | Nothing | None (internal quality) |
-| 7 — OOP Restructure, Cost Audit & Final Docs | ✅ Done | **SHIPPED:** 7.1 backend service+repository extraction (7 services + 5 repositories + DI wiring + Pydantic response_models). 7.2 two latent bug fixes via XPASS handoff. 7.3 App.jsx decomposition 709→318 LOC + 9 new hooks + ESLint v9 + lint-frontend CI job + 736 frontend tests. 7.4 final **backend 100% coverage** + frontend 100% lines (96% branches / 97% funcs) with per-file thresholds enforced. 7.5 cost formula (`CACHE_WRITE_PREMIUM_5M = 1.25`) + idempotent startup recompute + 4-way breakdown endpoints + Dashboard Cost Breakdown + Top 5 widget + MetadataPane Cost Attribution + retirement of the per-session 80/20 heuristic. 7.6 full documentation pass: master plan §3 Mermaid refresh + §10 phase status updates + §13 7.5 test cases + banner; `docs/status.md` + `docs/versions.md` created; README refreshed. | None | Final UI state as shipped in v1.0.0. |
-| 8 — Knowledge Graph wiki integration | 📋 Planned (v1.1.0) | Wire `graphify.wiki.to_wiki()` into the extraction pipeline so `graphify-out/wiki/` is always regenerated. New `GET /api/graph/wiki/{index,slug,lookup}` endpoints on `GraphService` + path-traversal guard. KG tab gains a split pane (`ConceptGraph` + new `ConceptWikiPane`). Concept click loads the matching community/god-node article in-place instead of flipping `activeTab`. New `useConceptWiki` hook; new `api.js` wrappers. "Open in Conversations" action preserves the session-drill-through affordance as an explicit click. Inline `[[WikiLink]]` anchors navigate within the pane with a breadcrumb trail. Tests land to keep the 100% lines gate (backend + frontend). | **User-visible:** clicking a concept no longer leaves the Knowledge Graph tab by default — users who rely on that flow must click the new "Open in Conversations" button instead. | New `ConceptWikiPane.jsx` component; `KnowledgeGraph.jsx` becomes a split-pane layout; `ConceptGraph.jsx` click semantics rewired (props renamed `onConceptClick` → `onOpenInConversations`); new `useConceptWiki` hook. |
+| 7 — OOP Restructure, Cost Audit & Final Docs | ✅ Done | **SHIPPED:** 7.1 backend service+repository extraction (7 services + 5 repositories + DI wiring + Pydantic response_models). 7.2 two latent bug fixes via XPASS handoff. 7.3 App.jsx decomposition 709→318 LOC + 9 new hooks + ESLint v9 + lint-frontend CI job + 736 frontend tests. 7.4 final **backend 100% coverage** + frontend 100% lines (96% branches / 97% funcs) with per-file thresholds enforced. 7.5 cost formula (`CACHE_WRITE_PREMIUM_5M = 1.25`) + idempotent startup recompute + 4-way breakdown endpoints + Dashboard Cost Breakdown + Top 5 widget + MetadataPane Cost Attribution + retirement of the per-session 80/20 heuristic. 7.6 full documentation pass: master plan §3 Mermaid refresh + §10 phase status updates + §13 7.5 test cases + banner; `docs/status.md` + `docs/versions.md` created; README refreshed. | None | Final UI state as shipped in v2.0.0. |
+| 8 — Knowledge Graph wiki integration | ✅ Done | **SHIPPED (v2.1.0):** `graph_extract.py::build_graph` wires `graphify.wiki.to_wiki(G, communities, wiki_dir, god_nodes_data=_derive_god_nodes(G))` alongside `to_json`; `file_type` values normalized to graphify's 5-enum via `FILE_TYPE_ALIASES` + system-prompt tightening. New `routes/graph.py` module with `/api/graph/wiki/{index,lookup,{slug}}` endpoints + path-traversal guard in `GraphService._safe_wiki_path`. `GraphService` gained `_wiki_slug` (3-sub parity-tested against `graphify.wiki._safe_filename`), `load_wiki_index`, `load_wiki_article`, `resolve_wiki_slug` (god-node first, community fallback). KG tab became a split pane hosting new `ConceptWikiPane`. `ConceptGraph` click branches on `metaKey/ctrlKey`: plain click → wiki pane (via new `useConceptWiki` hook); cmd/ctrl-click → `onOpenInConversations` fast-path (preserves v2.0.0 behavior). `useResizeHandles` gained `wikiWidth` (360 / 280-600). `utils.js` rewrites `[[Label]]` inline + `sanitizeHtml` preserves `data-wiki-slug` on `<a>`. 83 new backend tests + 144 new frontend tests; coverage gates held (backend 100% lines+branches+functions; frontend 100% lines with new modules at 100/100/100). | **User-visible:** plain click on a concept node no longer leaves the Knowledge Graph tab — it opens the wiki pane in-place. Cmd/Ctrl+click preserves the v2.0.0 "jump to Conversations with topic:" flow, and the wiki pane has an explicit "Open in Conversations" button for mouse-only users. | New `ConceptWikiPane.jsx` + new `useConceptWiki` hook; `KnowledgeGraph.jsx` split-pane layout; `ConceptGraph.jsx` prop rename (`onConceptClick` → `onConceptActivate`) + `onConceptOpenInConversations` branch; `useResizeHandles` gained `wikiWidth` + `wikiContainerRef`; `utils.js` `[[…]]` rewrite + `wikiSlug` export; `api.js` 3 new fetchers; `App.jsx` threads resize plumbing + replaces inline arrow with `handleOpenConceptInConversations`. |
 
-Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. Phase 7 completes the OOP restructure, cost audit, and final docs. **v1.0.0 shipped 2026-04-14 — project complete.**
+Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. Phase 7 completes the OOP restructure, cost audit, and final docs. Phase 8 surfaces the Graphify wiki in-tab. **v2.1.0 shipped 2026-04-15 — no further phases planned.**
 
 ---
 
@@ -2005,6 +2030,70 @@ Full-screen tab (not a dashboard section).
 | 5 | Total row | `Total` row at the bottom sums the 4 buckets |
 | 6 | Token note | "N estimated tokens total" shown below the rows only when `metrics.estimated_tokens > 0` |
 | 7 | Formatting | Every USD value goes through `Intl.NumberFormat` — `Number.isFinite` guard falls back to `$0.00` for non-numeric inputs |
+
+#### 13.7.16 Knowledge Graph wiki pane (P8)
+
+Split-pane layout inside the Knowledge Graph tab — `ConceptGraph` on the left, `ConceptWikiPane` on the right (hidden until a concept is activated).
+
+**Split-pane render + resize:**
+
+| # | Check | Expected |
+|---|-------|----------|
+| 1 | Initial state | Wiki pane is hidden; single full-width ConceptGraph visible. `activeTab` stays `"graph"` throughout this section. |
+| 2 | Resize handle | A vertical `.resize-handle-wiki` appears between left and right columns only when the pane is open. Drag narrows/widens the wiki column. |
+| 3 | Default width + bounds | Pane opens at 360px wide; mouse-drag clamps between 280px (min) and 600px (max). In-memory only — refreshing the page resets to 360px. |
+
+**Plain click → wiki pane open:**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Click a concept node (no modifier key) | `useConceptWiki.openByConcept({ conceptId: d.id, conceptName: d.name })` fires. `activeTab` does NOT change — stays `"graph"`. |
+| 2 | resolveWikiSlug hit (god-node or community article exists) | Wiki pane opens. Loading state shows briefly, then the rendered markdown article appears with title in the header bar. |
+| 3 | resolveWikiSlug miss (no matching article) | `openByConcept` rejects silently; wiki pane stays hidden; user can Cmd/Ctrl-click to use the fast-path. |
+
+**Cmd/Ctrl-click fast-path (v2.0.0 behavior preserved):**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Cmd+click a concept node (macOS) | `onConceptOpenInConversations(d.name)` fires. App flips `activeTab` to `"conversations"`; search bar shows `topic:<name>`. |
+| 2 | Ctrl+click a concept node (Windows/Linux parity) | Same behavior as Cmd+click. |
+
+**WikiLink navigation + breadcrumb:**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Click an inline `[[SomeTarget]]` anchor in the article body | `e.target.closest(".wiki-link")` + `dataset.wikiSlug` route to `openSlug(slug)`. Previous slug is pushed onto the breadcrumb stack; new article loads. |
+| 2 | Breadcrumb visibility | Hidden when stack is empty. Shown as clickable buttons plus a non-clickable current-title span when stack is non-empty. |
+| 3 | Click a breadcrumb entry | `onJumpToBreadcrumb(index)` fires: forward history is truncated (browser-back semantics); `selectedSlug` jumps to that entry. |
+| 4 | Breadcrumb depth | Unlimited — the full navigation trail remains visible until the pane is closed. |
+
+**Explicit "Open in Conversations" button:**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Click the "Open in Conversations" button in the wiki pane header | App flips to `"conversations"` tab with `topic:<article.title>` prefilled in the search bar. |
+
+**Close pane:**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Click the × close button in the wiki pane header | `wiki.close()` clears `selectedSlug` + breadcrumb; pane is removed from the DOM; single full-width graph returns. |
+
+**Degraded state (missing wiki directory):**
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | `graphify-out/wiki/` absent on disk | `fetchWikiIndex` returns 404; `indexError` is set but the pane stays closed. Clicking a node: `resolveWikiSlug` 404s; `openByConcept` silently no-ops. |
+| 2 | Regenerate path | User clicks the existing "Regenerate" button in the KG header → extraction re-runs → `graphify-out/wiki/index.md` + community + god-node articles materialize → next concept click opens the pane normally. |
+
+**Path-traversal guard (backend):**
+
+| # | Request | Expected |
+|---|---------|----------|
+| 1 | `curl http://localhost:5050/api/graph/wiki/..%2FSECRET` | 404. `GraphService._safe_wiki_path` resolves the target + asserts `relative_to(wiki_root)` → `ValueError` → `None` → 404. No file read outside `graphify-out/wiki/`. (Note: httpx ASGITransport URL-decodes `%2F` before routing, so wire-level HTTP tests hit the SPA catch-all instead of the guard. The service-level `test_safe_wiki_path_rejects_traversal_with_parent` is the definitive coverage.) |
+| 2 | `curl http://localhost:5050/api/graph/wiki/index` with `graphify-out/wiki/` absent | 404 with `{"detail": "Wiki index not found"}`. |
+| 3 | `curl http://localhost:5050/api/graph/wiki/Community_1` when the file is present | 200 with `{slug, title, markdown}`. |
+| 4 | `curl "http://localhost:5050/api/graph/wiki/lookup?concept_name=docker"` with a god-node article present | 200 with `{slug: "docker"}`. God-node precedence locked by backend test. |
 
 ### 13.7b UI — search mode badges (P5)
 

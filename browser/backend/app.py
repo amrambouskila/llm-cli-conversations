@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from routes import conversations, dashboard, projects, segments, stats, summaries, visibility
+from routes import conversations, dashboard, graph, projects, segments, stats, summaries, visibility
 
 
 def _log(msg: str) -> None:
@@ -124,6 +124,7 @@ app.include_router(stats.router)
 app.include_router(summaries.router)
 app.include_router(visibility.router)
 app.include_router(dashboard.router)
+app.include_router(graph.router)
 
 
 # ---------------------------------------------------------------------------

@@ -114,10 +114,10 @@ llm-cli-conversation-export/
     │   ├── models.py                  # SQLAlchemy 2.0 declarative models
     │   ├── schemas.py                 # Pydantic v2 request/response models
     │   ├── parser.py, load.py, embed.py, import_graph.py, graph_extract.py, …
-    │   ├── routes/                    # APIRouters: projects, segments, conversations, stats, summaries, visibility, dashboard
+    │   ├── routes/                    # APIRouters: projects, segments, conversations, stats, summaries, visibility, dashboard, graph
     │   ├── services/                  # SearchService, SessionService, DashboardService, GraphService, ProjectService, StatsService, SummaryService + _filter_scope
     │   ├── repositories/              # SessionRepository, SegmentRepository, ToolCallRepository, SessionTopicRepository, ConceptRepository
-    │   ├── tests/                     # 751 pytest tests — services/, repositories/, test_app_lifespan.py, test_load*.py, test_api_*.py, etc.
+    │   ├── tests/                     # 834 pytest tests — services/, repositories/, test_app_lifespan.py, test_load*.py, test_api_*.py, test_graph_extract.py, test_api_graph_wiki.py, etc.
     │   ├── requirements.txt           # runtime deps (fastapi, sqlalchemy, asyncpg, pgvector, onnxruntime, tokenizers)
     │   └── requirements-dev.txt       # pytest, pytest-asyncio, pytest-cov, testcontainers, httpx, ruff
     └── frontend/
@@ -132,9 +132,9 @@ llm-cli-conversation-export/
             ├── App.css                # All styles (dark + light theme)
             ├── api.js                 # Fetch wrapper per endpoint
             ├── utils.js               # Formatting + markdown renderer
-            ├── components/            # Header, SearchBar, FilterBar, ProjectsPane, RequestsPane, ContentPane, MetadataPane, ConversationsTab, Dashboard, KnowledgeGraph, ConceptGraph, Heatmap, Charts, SearchResults, FilterChips, ProjectList, RequestList, ContentViewer, SummaryPanel, MetadataPanel
-            ├── hooks/                 # useBackendReady, useProviders, useTheme, useSummaryTitles, useKeyboardShortcuts, useResizeHandles, useProjectSelection, useSearch, useHideRestore, useCostBreakdown
-            └── __tests__/             # 736 vitest tests mirroring components/ + hooks/
+            ├── components/            # Header, SearchBar, FilterBar, ProjectsPane, RequestsPane, ContentPane, MetadataPane, ConversationsTab, Dashboard, KnowledgeGraph, ConceptGraph, ConceptWikiPane, Heatmap, Charts, SearchResults, FilterChips, ProjectList, RequestList, ContentViewer, SummaryPanel, MetadataPanel
+            ├── hooks/                 # useBackendReady, useProviders, useTheme, useSummaryTitles, useKeyboardShortcuts, useResizeHandles, useProjectSelection, useSearch, useHideRestore, useCostBreakdown, useConceptWiki
+            └── __tests__/             # 818 vitest tests mirroring components/ + hooks/
 ```
 
 ## Architecture
@@ -149,8 +149,9 @@ graph TD
     F --> G[(Postgres 16<br/>pgvector + pg_trgm)]
     F --> H[embed.py<br/>all-MiniLM-L6-v2 ONNX]
     H --> G
-    D --> I[graph_extract.py<br/>claude -p + graphifyy]
+    D --> I[graph_extract.py<br/>claude -p + graphifyy<br/>+ to_wiki]
     I --> J[graphify-out/graph.json]
+    I --> WIKI[graphify-out/wiki/<br/>index + community + god-node articles]
     J --> K[import_graph.py]
     K --> G
 
@@ -159,12 +160,14 @@ graph TD
     M --> N[services/<br/>SearchService, SessionService, DashboardService,<br/>GraphService, ProjectService, StatsService, SummaryService]
     N --> O[repositories/<br/>SessionRepository, SegmentRepository,<br/>ToolCallRepository, SessionTopicRepository, ConceptRepository]
     O --> G
+    WIKI --> N
 
-    L --> P[React 19 frontend<br/>App.jsx → Header, ConversationsTab,<br/>Dashboard, KnowledgeGraph<br/>+ 10 custom hooks]
+    L --> P[React 19 frontend<br/>App.jsx → Header, ConversationsTab,<br/>Dashboard, KnowledgeGraph<br/>+ ConceptWikiPane + 11 hooks]
     P --> Q[Browser at :5050]
 
     style N fill:#e1f5ff
     style O fill:#f3e5f5
+    style WIKI fill:#fc9
 ```
 
 **Build pipeline (inside Dockerfile):**
@@ -254,6 +257,29 @@ To see and restore hidden items:
 The `v` and `r` shutdown options wipe `browser_state/`, `raw/`, `markdown/`, and `markdown_codex/`.
 
 Your source data in `~/.claude/projects/` is **never modified**.
+
+### Knowledge Graph Tab
+
+Click the **Knowledge Graph** tab in the header to open a full-tab d3 force-directed visualization of concepts extracted from your conversations by [graphifyy](https://github.com/safishamsi/graphify). When extraction finishes, the tab becomes a **split pane**: the graph stays on the left, and a **wiki pane** on the right opens whenever you click a concept node.
+
+**Click semantics.**
+
+- **Plain click on a concept node** → opens the matching wiki article in-place on the right. God-node articles take precedence over community articles when both exist for the clicked concept. The Knowledge Graph tab stays active; you never leave it.
+- **Cmd+click (macOS) or Ctrl+click (Windows/Linux)** → fast-path to the Conversations tab with `topic:<conceptName>` pre-filled in the search bar. This preserves the v2.0.0 behavior for users with muscle memory for the old flow.
+- **Resize the wiki pane** by dragging the vertical handle between the two columns. Default 360px wide, clamped between 280 and 600.
+
+**Navigating within the wiki.**
+
+- Inline `[[WikiLink]]` anchors inside an article swap the pane to that linked article. The previously viewed slug pushes onto an unlimited-depth breadcrumb.
+- Click any breadcrumb entry to jump back — forward history is truncated, matching browser-back semantics.
+- The wiki pane header shows an explicit **Open in Conversations** button that flips to the Conversations tab with `topic:<article-title>` pre-filled (useful when you want to search for raw conversation transcripts about the concept).
+- Click the **×** close button to collapse the wiki pane and return to a full-width graph.
+
+**Regenerating the wiki.**
+
+The `graph_extract.py` pipeline now calls `graphify.wiki.to_wiki(...)` alongside `to_json(...)`, so `graphify-out/wiki/index.md` + per-community articles + top-15 god-node articles are regenerated automatically on every concept-graph run. If you ever see a concept click silently do nothing, it likely means the wiki dir is missing — click the header **Regenerate** button to re-run extraction, and both `graph.json` and `wiki/` will rebuild.
+
+Path-traversal safety: `/api/graph/wiki/{slug}` resolves the target path and asserts it's still under `graphify-out/wiki/` via `Path.relative_to()` before any file read. Any escape attempt (encoded `..`, raw `/`, null bytes) returns 404.
 
 ### AI Summaries
 
@@ -352,3 +378,4 @@ The Vite dev server runs on `http://localhost:5174` and proxies `/api/*` to Fast
 - [x] **Delete / Restore** — soft-delete segments, conversations, or projects with a Trash view to restore
 - [x] **AI Summaries** — AI-generated summaries in a split content pane, cached to disk, no API key needed
 - [x] **Multi-provider support** — browse Claude and Codex conversations with a provider dropdown
+- [x] **Knowledge Graph wiki exploration** (v2.1.0 / Phase 8) — click a concept node to open the matching community/god-node wiki article in a split pane without leaving the tab; `[[WikiLink]]` anchors navigate within the pane; Cmd/Ctrl+click preserves the v2.0.0 fast-path to Conversations

@@ -211,6 +211,22 @@ export async function importDashboardGraph() {
   return request(`${BASE}/api/dashboard/graph/import`, { method: "POST" });
 }
 
+// Knowledge Graph wiki (Phase 8) — community + god-node article surface
+export async function fetchWikiIndex(options = {}) {
+  return request(`${BASE}/api/graph/wiki/index`, options);
+}
+
+export async function fetchWikiArticle(slug, options = {}) {
+  return request(`${BASE}/api/graph/wiki/${encodeURIComponent(slug)}`, options);
+}
+
+export async function resolveWikiSlug({ conceptId, conceptName }, options = {}) {
+  const params = new URLSearchParams();
+  if (conceptId) params.set("concept_id", conceptId);
+  if (conceptName) params.set("concept_name", conceptName);
+  return request(`${BASE}/api/graph/wiki/lookup?${params.toString()}`, options);
+}
+
 // Fetch with hidden items visible
 export async function fetchProjectsWithHidden(provider = "claude") {
   return request(`${BASE}/api/projects?show_hidden=true&provider=${provider}`);

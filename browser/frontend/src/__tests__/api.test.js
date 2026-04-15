@@ -140,6 +140,13 @@ describe("api — wrapper URL + method contracts", () => {
     [api.triggerDashboardGraphGenerate, [], "/api/dashboard/graph/generate", "POST"],
     [api.importDashboardGraph, [], "/api/dashboard/graph/import", "POST"],
     [api.fetchSessionCostBreakdown, ["s1"], "/api/sessions/s1/cost-breakdown"],
+    [api.fetchWikiIndex, [], "/api/graph/wiki/index"],
+    [api.fetchWikiArticle, ["Community_1"], "/api/graph/wiki/Community_1"],
+    [
+      api.fetchWikiArticle,
+      ["needs encoding/slash"],
+      "/api/graph/wiki/needs%20encoding%2Fslash",
+    ],
   ];
 
   it.each(cases)(
@@ -231,5 +238,68 @@ describe("api — fetchSessionCostBreakdown options", () => {
     await api.fetchSessionCostBreakdown("s1", { signal: controller.signal });
     const [, opts] = fetch.mock.calls[0];
     expect(opts?.signal).toBe(controller.signal);
+  });
+});
+
+describe("api — wiki fetchers (Phase 8)", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ stub: true }),
+      })
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetchWikiIndex forwards options.signal", async () => {
+    const controller = new AbortController();
+    await api.fetchWikiIndex({ signal: controller.signal });
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("fetchWikiArticle forwards options.signal", async () => {
+    const controller = new AbortController();
+    await api.fetchWikiArticle("Community_1", { signal: controller.signal });
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("resolveWikiSlug serializes both concept_id and concept_name when present", async () => {
+    await api.resolveWikiSlug({ conceptId: "c1", conceptName: "docker" });
+    const url = fetch.mock.calls[0][0];
+    expect(url).toContain("/api/graph/wiki/lookup?");
+    expect(url).toContain("concept_id=c1");
+    expect(url).toContain("concept_name=docker");
+  });
+
+  it("resolveWikiSlug omits concept_id when null", async () => {
+    await api.resolveWikiSlug({ conceptName: "docker" });
+    const url = fetch.mock.calls[0][0];
+    expect(url).toContain("concept_name=docker");
+    expect(url).not.toContain("concept_id");
+  });
+
+  it("resolveWikiSlug omits concept_name when null", async () => {
+    await api.resolveWikiSlug({ conceptId: "c1" });
+    const url = fetch.mock.calls[0][0];
+    expect(url).toContain("concept_id=c1");
+    expect(url).not.toContain("concept_name");
+  });
+
+  it("resolveWikiSlug forwards options.signal", async () => {
+    const controller = new AbortController();
+    await api.resolveWikiSlug(
+      { conceptName: "x" },
+      { signal: controller.signal },
+    );
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("resolveWikiSlug returns the parsed JSON body", async () => {
+    const result = await api.resolveWikiSlug({ conceptName: "x" });
+    expect(result).toEqual({ stub: true });
   });
 });

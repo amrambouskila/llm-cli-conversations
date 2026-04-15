@@ -95,7 +95,9 @@ export default function App() {
     projectsWidth,
     requestsWidth,
     metadataWidth,
+    wikiWidth,
     mainRef,
+    wikiContainerRef,
     startDrag,
   } = useResizeHandles();
 
@@ -181,6 +183,11 @@ export default function App() {
       setRequestsHeader(`Requests \u2014 ${project}`);
     }
   }, [loadProjectConversation, setSearchQuery]);
+
+  const handleOpenConceptInConversations = useCallback((conceptName) => {
+    setActiveTab("conversations");
+    setSearchQuery(`topic:${conceptName}`);
+  }, [setSearchQuery]);
 
   const handleUpdate = useCallback(async () => {
     setIsUpdating(true); setUpdateStatus(null);
@@ -307,10 +314,10 @@ export default function App() {
       {activeTab === "graph" && (
         <KnowledgeGraph
           provider={provider}
-          onConceptClick={(concept) => {
-            setActiveTab("conversations");
-            handleDashboardNavigate(null, null, `topic:${concept.name}`);
-          }}
+          onOpenInConversations={handleOpenConceptInConversations}
+          wikiContainerRef={wikiContainerRef}
+          wikiWidth={wikiWidth}
+          startDrag={startDrag}
         />
       )}
     </div>

@@ -269,15 +269,69 @@ describe("ConceptGraph — data changes", () => {
     // No assertion needed — simply exercising the re-run path.
   });
 
-  it("node click fires onConceptClick (lines 183-184)", () => {
-    const onConceptClick = vi.fn();
+  it("plain click on a node fires onConceptActivate with the node datum", () => {
+    const onActivate = vi.fn();
+    const onOpenInConv = vi.fn();
     const { container } = render(
-      <ConceptGraph data={sampleData()} onConceptClick={onConceptClick} />
+      <ConceptGraph
+        data={sampleData()}
+        onConceptActivate={onActivate}
+        onConceptOpenInConversations={onOpenInConv}
+      />,
     );
     const nodes = container.querySelectorAll("svg circle");
     expect(nodes.length).toBeGreaterThan(0);
     fireEvent.click(nodes[0]);
-    expect(onConceptClick).toHaveBeenCalled();
+    expect(onActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "n1", name: "Node 1" }),
+    );
+    expect(onOpenInConv).not.toHaveBeenCalled();
+  });
+
+  it("cmd/meta-click on a node fires onConceptOpenInConversations with node.name", () => {
+    const onActivate = vi.fn();
+    const onOpenInConv = vi.fn();
+    const { container } = render(
+      <ConceptGraph
+        data={sampleData()}
+        onConceptActivate={onActivate}
+        onConceptOpenInConversations={onOpenInConv}
+      />,
+    );
+    const nodes = container.querySelectorAll("svg circle");
+    fireEvent.click(nodes[0], { metaKey: true });
+    expect(onOpenInConv).toHaveBeenCalledWith("Node 1");
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("ctrl-click on a node fires onConceptOpenInConversations (Windows/Linux parity)", () => {
+    const onActivate = vi.fn();
+    const onOpenInConv = vi.fn();
+    const { container } = render(
+      <ConceptGraph
+        data={sampleData()}
+        onConceptActivate={onActivate}
+        onConceptOpenInConversations={onOpenInConv}
+      />,
+    );
+    const nodes = container.querySelectorAll("svg circle");
+    fireEvent.click(nodes[0], { ctrlKey: true });
+    expect(onOpenInConv).toHaveBeenCalledWith("Node 1");
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("plain click without onConceptActivate prop does not throw", () => {
+    const { container } = render(<ConceptGraph data={sampleData()} />);
+    const nodes = container.querySelectorAll("svg circle");
+    expect(() => fireEvent.click(nodes[0])).not.toThrow();
+  });
+
+  it("cmd-click without onConceptOpenInConversations prop does not throw", () => {
+    const { container } = render(<ConceptGraph data={sampleData()} />);
+    const nodes = container.querySelectorAll("svg circle");
+    expect(() =>
+      fireEvent.click(nodes[0], { metaKey: true }),
+    ).not.toThrow();
   });
 });
 

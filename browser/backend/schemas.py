@@ -483,6 +483,32 @@ class GraphImportResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# /api/graph/wiki/* — GraphService wiki surface (Phase 8)
+# ---------------------------------------------------------------------------
+
+class WikiArticleSummary(BaseModel):
+    slug: str
+    title: str
+    kind: Literal["community", "god_node"]
+
+
+class WikiIndex(BaseModel):
+    title: str
+    markdown: str
+    articles: list[WikiArticleSummary]
+
+
+class WikiArticle(BaseModel):
+    slug: str
+    title: str
+    markdown: str
+
+
+class WikiLookup(BaseModel):
+    slug: str
+
+
+# ---------------------------------------------------------------------------
 # /api/summary/* — SummaryService responses
 # ---------------------------------------------------------------------------
 

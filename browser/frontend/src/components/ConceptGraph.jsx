@@ -45,18 +45,28 @@ const SLIDERS = [
   { key: "labelThreshold", label: "Label Threshold", min: 0, max: 1, step: 0.05 },
 ];
 
-export default function ConceptGraph({ data, onConceptClick }) {
+export default function ConceptGraph({
+  data,
+  onConceptActivate,
+  onConceptOpenInConversations,
+}) {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const simulationRef = useRef(null);
-  const onClickRef = useRef(onConceptClick);
+  const onActivateRef = useRef(onConceptActivate);
+  const onOpenInConvRef = useRef(onConceptOpenInConversations);
   const prevDataKeyRef = useRef(null);
   const sizeScaleRef = useRef(null);
 
   const [settings, setSettings] = useState(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => { onClickRef.current = onConceptClick; }, [onConceptClick]);
+  useEffect(() => {
+    onActivateRef.current = onConceptActivate;
+  }, [onConceptActivate]);
+  useEffect(() => {
+    onOpenInConvRef.current = onConceptOpenInConversations;
+  }, [onConceptOpenInConversations]);
 
   const cleanup = useCallback(() => {
     if (simulationRef.current) {
@@ -181,7 +191,13 @@ export default function ConceptGraph({ data, onConceptClick }) {
 
     node.on("click", (event, d) => {
       event.stopPropagation();
-      if (onClickRef.current) onClickRef.current(d);
+      // Cmd/Ctrl+click preserves the v2.0.0 fast-path: jump to the
+      // Conversations tab with `topic:<name>`. Plain click opens the wiki pane.
+      if (event.metaKey || event.ctrlKey) {
+        if (onOpenInConvRef.current) onOpenInConvRef.current(d.name);
+      } else {
+        if (onActivateRef.current) onActivateRef.current(d);
+      }
     });
 
     // All nodes get labels, visibility controlled by threshold

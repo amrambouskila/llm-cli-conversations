@@ -2406,3 +2406,192 @@ body {
   color: var(--text-dim);
   padding: 4px 0;
 }
+
+/* ============================================================
+   Knowledge Graph wiki pane (Phase 8)
+   ============================================================ */
+.knowledge-graph-split {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  gap: 0;
+}
+
+.knowledge-graph-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.knowledge-graph-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.resize-handle-wiki {
+  width: 5px;
+  background: transparent;
+  cursor: col-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.resize-handle-wiki:hover {
+  background: var(--accent);
+}
+
+.concept-wiki-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.concept-wiki-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface2);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.concept-wiki-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.concept-wiki-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.concept-wiki-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.concept-wiki-close:hover {
+  background: var(--bg-surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.wiki-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.wiki-breadcrumb-entry {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.wiki-breadcrumb-entry:hover {
+  background: var(--bg-surface2);
+  text-decoration: underline;
+}
+
+.wiki-breadcrumb-entry::after {
+  content: "›";
+  margin-left: 6px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.wiki-breadcrumb-current {
+  color: var(--text);
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.concept-wiki-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.concept-wiki-body h1 { font-size: 18px; margin: 0 0 12px; }
+.concept-wiki-body h2 { font-size: 16px; margin: 18px 0 8px; color: var(--text-bright); }
+.concept-wiki-body h3 { font-size: 14px; margin: 14px 0 6px; }
+.concept-wiki-body p { margin: 0 0 10px; }
+.concept-wiki-body ul { margin: 0 0 12px; padding-left: 20px; }
+.concept-wiki-body li { margin-bottom: 4px; }
+.concept-wiki-body code {
+  background: var(--bg-surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.concept-wiki-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+.wiki-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--accent);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wiki-link:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-bottom-style: solid;
+}
+
+.concept-wiki-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 24px 20px;
+}
+
+.concept-wiki-regen {
+  margin-top: 4px;
+}

@@ -6,11 +6,21 @@ import {
   importDashboardGraph,
 } from "../api";
 import ConceptGraph from "./ConceptGraph";
+import ConceptWikiPane from "./ConceptWikiPane";
+import { useConceptWiki } from "../hooks/useConceptWiki";
 
-export default function KnowledgeGraph({ provider, onConceptClick }) {
+export default function KnowledgeGraph({
+  provider,
+  onOpenInConversations,
+  wikiContainerRef,
+  wikiWidth,
+  startDrag,
+}) {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [graphStatus, setGraphStatus] = useState("loading");
   const [graphProgress, setGraphProgress] = useState(null);
+
+  const wiki = useConceptWiki(provider);
 
   const apiParams = { provider };
 
@@ -93,6 +103,17 @@ export default function KnowledgeGraph({ provider, onConceptClick }) {
     }
   }, []);
 
+  const handleConceptActivate = useCallback(
+    (node) => {
+      wiki.openByConcept({ conceptId: node.id, conceptName: node.name });
+    },
+    [wiki],
+  );
+
+  const paneOpen = wiki.selectedSlug !== null;
+
+  const graphReady = graphStatus === "ready" && graphData.nodes.length > 0;
+
   return (
     <div className="knowledge-graph-view">
       <div className="knowledge-graph-header">
@@ -157,8 +178,43 @@ export default function KnowledgeGraph({ provider, onConceptClick }) {
             Retry
           </button>
         </div>
-      ) : graphData.nodes.length > 0 ? (
-        <ConceptGraph data={graphData} onConceptClick={onConceptClick} />
+      ) : graphReady ? (
+        <div className="knowledge-graph-split" ref={wikiContainerRef}>
+          <div className="knowledge-graph-left">
+            <ConceptGraph
+              data={graphData}
+              onConceptActivate={handleConceptActivate}
+              onConceptOpenInConversations={onOpenInConversations}
+            />
+          </div>
+          {paneOpen && (
+            <>
+              <div
+                className="resize-handle resize-handle-wiki"
+                onMouseDown={() => startDrag("wiki")}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize wiki pane"
+              />
+              <div
+                className="knowledge-graph-right"
+                style={{ width: wikiWidth }}
+              >
+                <ConceptWikiPane
+                  article={wiki.article}
+                  loading={wiki.loading}
+                  error={wiki.error}
+                  breadcrumb={wiki.breadcrumb}
+                  onSlugClick={wiki.openSlug}
+                  onJumpToBreadcrumb={wiki.jumpToBreadcrumb}
+                  onOpenInConversations={onOpenInConversations}
+                  onClose={wiki.close}
+                  onRegenerate={handleRegenerate}
+                />
+              </div>
+            </>
+          )}
+        </div>
       ) : (
         <div className="graph-loading">
           <div className="graph-loading-text">

@@ -298,6 +298,91 @@ describe("useResizeHandles — mousemove without active drag", () => {
   });
 });
 
+describe("useResizeHandles — drag wiki pane (Phase 8)", () => {
+  it("initial wikiWidth matches default 360", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    expect(result.current.wikiWidth).toBe(360);
+  });
+
+  it("exposes wikiContainerRef with null current initially", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    expect(result.current.wikiContainerRef.current).toBeNull();
+  });
+
+  it("drags wiki pane width to wikiContainer.right minus clientX", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    const container = document.createElement("div");
+    container.getBoundingClientRect = () => ({
+      left: 200,
+      right: 1500,
+      top: 0,
+      bottom: 900,
+      width: 1300,
+      height: 900,
+    });
+    act(() => {
+      result.current.wikiContainerRef.current = container;
+    });
+    act(() => {
+      result.current.startDrag("wiki");
+    });
+    act(() => fireMove(1100));
+    // 1500 - 1100 = 400
+    expect(result.current.wikiWidth).toBe(400);
+  });
+
+  it("clamps wiki width to 280 minimum", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    const container = document.createElement("div");
+    container.getBoundingClientRect = () => ({
+      left: 0,
+      right: 1500,
+      top: 0,
+      bottom: 900,
+      width: 1500,
+      height: 900,
+    });
+    act(() => {
+      result.current.wikiContainerRef.current = container;
+    });
+    act(() => {
+      result.current.startDrag("wiki");
+    });
+    act(() => fireMove(1300)); // 1500 - 1300 = 200, clamped to 280
+    expect(result.current.wikiWidth).toBe(280);
+  });
+
+  it("clamps wiki width to 600 maximum", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    const container = document.createElement("div");
+    container.getBoundingClientRect = () => ({
+      left: 0,
+      right: 1500,
+      top: 0,
+      bottom: 900,
+      width: 1500,
+      height: 900,
+    });
+    act(() => {
+      result.current.wikiContainerRef.current = container;
+    });
+    act(() => {
+      result.current.startDrag("wiki");
+    });
+    act(() => fireMove(800)); // 1500 - 800 = 700, clamped to 600
+    expect(result.current.wikiWidth).toBe(600);
+  });
+
+  it("mousemove with no wikiContainerRef set is a no-op", () => {
+    const { result } = renderHook(() => useResizeHandles());
+    act(() => {
+      result.current.startDrag("wiki");
+    });
+    act(() => fireMove(500));
+    expect(result.current.wikiWidth).toBe(360);
+  });
+});
+
 describe("useResizeHandles — cleanup", () => {
   it("unmount removes document-level listeners", () => {
     const { result, unmount } = renderHook(() => useResizeHandles());

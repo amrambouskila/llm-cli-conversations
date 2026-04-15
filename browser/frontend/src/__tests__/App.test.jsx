@@ -63,16 +63,27 @@ vi.mock("../components/Dashboard", () => ({
       >
         nav
       </button>
+      <button
+        data-testid="dashboard-search-trigger"
+        onClick={() =>
+          onNavigateToConversation &&
+          onNavigateToConversation(null, null, "topic:something")
+        }
+      >
+        search
+      </button>
     </div>
   ),
 }));
 
 vi.mock("../components/KnowledgeGraph", () => ({
-  default: ({ onConceptClick }) => (
+  default: ({ onOpenInConversations }) => (
     <div data-testid="kg-stub">
       <button
         data-testid="kg-concept-trigger"
-        onClick={() => onConceptClick && onConceptClick({ name: "docker" })}
+        onClick={() =>
+          onOpenInConversations && onOpenInConversations("docker")
+        }
       >
         trigger
       </button>
@@ -398,13 +409,14 @@ describe("App — tab switching", () => {
 });
 
 describe("App — inline wrapper coverage", () => {
-  it("clicking a KnowledgeGraph concept flips to Conversations + sets topic: query", async () => {
-    // Exercises App.jsx's onConceptClick inline wrapper (lines 311-313).
+  it("KnowledgeGraph onOpenInConversations flips tab to Conversations + sets topic: query", async () => {
+    // Exercises App.jsx's handleOpenConceptInConversations callback.
+    // The Phase 8 wiring uses cmd/ctrl-click (concept fast-path) and the
+    // wiki pane's "Open in Conversations" button to fire this prop.
     const { user } = await renderAppReady();
     await user.click(screen.getByRole("button", { name: "Knowledge Graph" }));
     const trigger = await screen.findByTestId("kg-concept-trigger");
     await user.click(trigger);
-    // Active tab flipped back to conversations; search bar shows topic:docker
     const searchInput = await screen.findByPlaceholderText(
       /Search conversations/i
     );
@@ -423,6 +435,17 @@ describe("App — inline wrapper coverage", () => {
         "claude"
       )
     );
+  });
+
+  it("dashboard navigate with searchTerm sets the query and short-circuits (lines 177-180)", async () => {
+    const { user } = await renderAppReady();
+    await user.click(screen.getByRole("button", { name: "Dashboard" }));
+    const searchTrigger = await screen.findByTestId("dashboard-search-trigger");
+    await user.click(searchTrigger);
+    const searchInput = await screen.findByPlaceholderText(
+      /Search conversations/i
+    );
+    await waitFor(() => expect(searchInput.value).toBe("topic:something"));
   });
 
   it("project-list sort comparator fires with 2+ projects (lines 132-134)", async () => {

@@ -88,9 +88,19 @@ const ALLOWED_TAGS = new Set([
 ]);
 
 /**
+ * Compute the wiki article filename for a concept label. Mirrors
+ * graphify.wiki._safe_filename exactly (locked by a backend parity test);
+ * keep the three substitutions in sync if graphifyy ever changes its rules.
+ */
+export function wikiSlug(label) {
+  return label.replace(/\//g, "-").replace(/ /g, "_").replace(/:/g, "-");
+}
+
+/**
  * Strip any HTML tag whose name is not in ALLOWED_TAGS.
- * Permits class attributes on allowed tags but removes all other attributes
- * (blocks event handlers like onerror, onclick, etc.).
+ * Permits the class attribute on every allowed tag and additionally permits
+ * data-wiki-slug on <a> tags so the wiki-link rewrite in renderMarkdown
+ * survives. All other attributes are removed (blocks onerror, onclick, etc.).
  */
 export function sanitizeHtml(html) {
   return html.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)?\/?>/g, (match, tag, attrs) => {
@@ -98,15 +108,22 @@ export function sanitizeHtml(html) {
     if (!ALLOWED_TAGS.has(lower)) {
       return "";
     }
-    // For allowed tags, keep only class="..." attributes
     if (attrs) {
+      const isClosing = match.startsWith("</");
+      const isSelfClosing = match.endsWith("/>");
+      // <a> opening tag: preserve class + data-wiki-slug if present.
+      if (lower === "a" && !isClosing) {
+        const classMatch = attrs.match(/\bclass="([^"]*)"/);
+        const slugMatch = attrs.match(/\bdata-wiki-slug="([^"]*)"/);
+        const parts = [];
+        if (classMatch) parts.push(`class="${classMatch[1]}"`);
+        if (slugMatch) parts.push(`data-wiki-slug="${slugMatch[1]}"`);
+        return parts.length === 0 ? "<a>" : `<a ${parts.join(" ")}>`;
+      }
       const classMatch = attrs.match(/\bclass="([^"]*)"/);
       if (classMatch) {
         return match.replace(attrs, ` class="${classMatch[1]}"`);
       }
-      // Strip all attributes
-      const isClosing = match.startsWith("</");
-      const isSelfClosing = match.endsWith("/>");
       if (isClosing) return `</${lower}>`;
       if (isSelfClosing) return `<${lower} />`;
       return `<${lower}>`;
@@ -148,6 +165,13 @@ export function renderMarkdown(md) {
   // Bold / italic
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+  // Wiki links — rewrite [[Label]] to clickable anchors. Operates on
+  // already-escaped text so the captured label is HTML-safe; the data-wiki-slug
+  // attribute survives sanitizeHtml's allowlist for <a> tags.
+  html = html.replace(/\[\[([^[\]]+)\]\]/g, (_, label) => {
+    return `<a class="wiki-link" data-wiki-slug="${wikiSlug(label)}">${label}</a>`;
+  });
 
   // Blockquotes
   html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");

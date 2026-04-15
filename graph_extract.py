@@ -29,6 +29,48 @@ def _log(msg: str, err: bool = False) -> None:
 GRAPHIFY_MODEL = os.environ.get("GRAPHIFY_MODEL", "claude-sonnet-4-6")
 MAX_CONDENSED_CHARS = 120_000
 
+# Graphify's type enum. Unknown values from the extractor are folded back into
+# these five via FILE_TYPE_ALIASES so the downstream graph stays consistent.
+ALLOWED_FILE_TYPES = frozenset({"code", "document", "image", "paper", "rationale"})
+FILE_TYPE_ALIASES = {
+    "library": "code",
+    "package": "code",
+    "module": "code",
+    "script": "code",
+    "tool": "code",
+    "framework": "code",
+    "doc": "document",
+    "documentation": "document",
+    "markdown": "document",
+    "notes": "document",
+    "note": "document",
+    "readme": "document",
+    "article": "paper",
+    "pdf": "paper",
+    "publication": "paper",
+    "screenshot": "image",
+    "diagram": "image",
+    "figure": "image",
+    "design_decision": "rationale",
+    "decision": "rationale",
+    "plan": "rationale",
+    "rfc": "rationale",
+}
+
+
+def _normalize_file_type(raw: str | None) -> str:
+    """Force `file_type` into the Graphify enum (code/document/image/paper/rationale).
+
+    Unknown values fall back to `code` (the most common extracted type).
+    """
+    if not raw:
+        return "code"
+    key = raw.strip().lower()
+    if key in ALLOWED_FILE_TYPES:
+        return key
+    return FILE_TYPE_ALIASES.get(key, "code")
+
+
 # System prompt is architecturally separated from user content via --system-prompt.
 # This prevents Claude from treating conversation markdown as a conversation to continue.
 SYSTEM_PROMPT = (
@@ -37,6 +79,7 @@ SYSTEM_PROMPT = (
     "DO NOT continue, summarize, reply to, or engage with the content. "
     "DO NOT treat it as a conversation to respond to. "
     "Your ONLY job is to extract a knowledge graph as valid JSON. "
+    "For every node, file_type MUST be exactly one of: code, document, image, paper, rationale. "
     "Output ONLY raw JSON with no markdown fences, no explanation, no preamble, no text before or after the JSON."
 )
 
@@ -203,12 +246,25 @@ def extract_file(md_path: Path, out_dir: Path, model: str) -> bool:
     return False
 
 
+GOD_NODE_COUNT = 15
+
+
+def _derive_god_nodes(G) -> list[dict]:  # noqa: ANN001 — networkx.Graph avoids module-level import cost
+    """Top-N highest-degree nodes shaped for graphify.wiki.to_wiki."""
+    top_ids = sorted(G.nodes, key=lambda n: G.degree(n), reverse=True)[:GOD_NODE_COUNT]
+    return [
+        {"id": nid, "label": G.nodes[nid].get("label", nid), "edges": G.degree(nid)}
+        for nid in top_ids
+    ]
+
+
 def build_graph(out_dir: Path) -> bool:
-    """Merge all chunk extractions and build the final graph."""
+    """Merge all chunk extractions and build the final graph + wiki."""
     try:
         from graphify.build import build_from_json
         from graphify.cluster import cluster
         from graphify.export import to_json
+        from graphify.wiki import to_wiki
     except ImportError:
         _log("ERROR: graphifyy not installed (pip install graphifyy)", err=True)
         return False
@@ -224,6 +280,7 @@ def build_graph(out_dir: Path) -> bool:
                 nid = node.get("id")
                 if nid and nid not in seen_ids:
                     seen_ids.add(nid)
+                    node["file_type"] = _normalize_file_type(node.get("file_type"))
                     all_nodes.append(node)
             all_edges.extend(data.get("edges", []))
         except Exception as e:
@@ -245,7 +302,14 @@ def build_graph(out_dir: Path) -> bool:
     communities = cluster(G)
     to_json(G, communities, str(out_dir / "graph.json"))
 
-    _log(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(communities)} communities")
+    wiki_dir = out_dir / "wiki"
+    god_nodes_data = _derive_god_nodes(G)
+    article_count = to_wiki(G, communities, str(wiki_dir), god_nodes_data=god_nodes_data)
+
+    _log(
+        f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, "
+        f"{len(communities)} communities, {article_count} wiki articles"
+    )
     return True
 
 

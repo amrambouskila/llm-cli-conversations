@@ -3,18 +3,46 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../components/ConceptGraph", () => ({
-  default: function MockConceptGraph({ data, onConceptClick }) {
+  default: function MockConceptGraph({
+    data,
+    onConceptActivate,
+    onConceptOpenInConversations,
+  }) {
     return (
       <div data-testid="concept-graph">
         <span data-testid="node-count">{data.nodes.length}</span>
         <span data-testid="edge-count">{data.edges.length}</span>
         <button
-          data-testid="trigger-click"
+          data-testid="trigger-activate"
           onClick={() =>
-            onConceptClick && onConceptClick({ id: "n1", name: "Node1" })
+            onConceptActivate &&
+            onConceptActivate({ id: "n1", name: "Docker" })
           }
         >
-          click
+          activate
+        </button>
+        <button
+          data-testid="trigger-open-in-conv"
+          onClick={() =>
+            onConceptOpenInConversations && onConceptOpenInConversations("Docker")
+          }
+        >
+          fast-path
+        </button>
+      </div>
+    );
+  },
+}));
+
+vi.mock("../components/ConceptWikiPane", () => ({
+  default: function MockConceptWikiPane({ article, loading, error, onClose }) {
+    return (
+      <div data-testid="wiki-pane">
+        <span data-testid="wiki-loading">{loading ? "loading" : "idle"}</span>
+        <span data-testid="wiki-error">{error ? "errored" : "ok"}</span>
+        <span data-testid="wiki-title">{article ? article.title : "no-article"}</span>
+        <button data-testid="wiki-close" onClick={onClose}>
+          close
         </button>
       </div>
     );
@@ -26,6 +54,9 @@ vi.mock("../api", () => ({
   fetchDashboardGraphStatus: vi.fn(),
   triggerDashboardGraphGenerate: vi.fn(),
   importDashboardGraph: vi.fn(),
+  fetchWikiIndex: vi.fn(),
+  fetchWikiArticle: vi.fn(),
+  resolveWikiSlug: vi.fn(),
 }));
 
 import KnowledgeGraph from "../components/KnowledgeGraph";
@@ -34,10 +65,24 @@ import {
   fetchDashboardGraphStatus,
   triggerDashboardGraphGenerate,
   importDashboardGraph,
+  fetchWikiIndex,
+  fetchWikiArticle,
+  resolveWikiSlug,
 } from "../api";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fetchWikiIndex.mockResolvedValue({
+    title: "Knowledge Graph Index",
+    markdown: "# Knowledge Graph Index\n",
+    articles: [],
+  });
+  fetchWikiArticle.mockResolvedValue({
+    slug: "Docker",
+    title: "Docker",
+    markdown: "# Docker\nbody",
+  });
+  resolveWikiSlug.mockResolvedValue({ slug: "Docker" });
 });
 
 afterEach(() => {
@@ -46,7 +91,6 @@ afterEach(() => {
 
 describe("KnowledgeGraph — initial loading", () => {
   it("shows 'Loading...' initially before first status resolves", () => {
-    // Leave the promise unresolved
     fetchDashboardGraphStatus.mockReturnValue(new Promise(() => {}));
     render(<KnowledgeGraph provider="claude" />);
     expect(screen.getByText(/^Loading\.\.\./)).toBeInTheDocument();
@@ -88,21 +132,109 @@ describe("KnowledgeGraph — state = ready with data", () => {
     );
   });
 
-  it("forwards onConceptClick from ConceptGraph to the prop callback", async () => {
-    const onConceptClick = vi.fn();
+  it("wiki pane is hidden until a concept is activated", async () => {
     fetchDashboardGraphStatus.mockResolvedValue({ has_data: true });
     fetchDashboardGraph.mockResolvedValue({
-      nodes: [{ id: "n1", name: "Node1" }],
+      nodes: [{ id: "n1", name: "Docker" }],
+      edges: [],
+    });
+    render(<KnowledgeGraph provider="claude" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("concept-graph")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("wiki-pane")).not.toBeInTheDocument();
+  });
+
+  it("plain concept activation opens the wiki pane (resolveWikiSlug → openSlug)", async () => {
+    fetchDashboardGraphStatus.mockResolvedValue({ has_data: true });
+    fetchDashboardGraph.mockResolvedValue({
+      nodes: [{ id: "n1", name: "Docker" }],
+      edges: [],
+    });
+    render(<KnowledgeGraph provider="claude" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("concept-graph")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("trigger-activate"));
+    await waitFor(() =>
+      expect(screen.getByTestId("wiki-pane")).toBeInTheDocument(),
+    );
+    expect(resolveWikiSlug).toHaveBeenCalledWith({
+      conceptId: "n1",
+      conceptName: "Docker",
+    });
+    expect(fetchWikiArticle).toHaveBeenCalledWith(
+      "Docker",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("cmd-click fast-path bubbles to onOpenInConversations prop", async () => {
+    const onOpenInConversations = vi.fn();
+    fetchDashboardGraphStatus.mockResolvedValue({ has_data: true });
+    fetchDashboardGraph.mockResolvedValue({
+      nodes: [{ id: "n1", name: "Docker" }],
       edges: [],
     });
     render(
-      <KnowledgeGraph provider="claude" onConceptClick={onConceptClick} />
+      <KnowledgeGraph
+        provider="claude"
+        onOpenInConversations={onOpenInConversations}
+      />,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("concept-graph")).toBeInTheDocument()
+      expect(screen.getByTestId("concept-graph")).toBeInTheDocument(),
     );
-    await userEvent.click(screen.getByTestId("trigger-click"));
-    expect(onConceptClick).toHaveBeenCalledWith({ id: "n1", name: "Node1" });
+    await userEvent.click(screen.getByTestId("trigger-open-in-conv"));
+    expect(onOpenInConversations).toHaveBeenCalledWith("Docker");
+  });
+
+  it("mouseDown on the wiki resize handle calls startDrag('wiki')", async () => {
+    const startDrag = vi.fn();
+    fetchDashboardGraphStatus.mockResolvedValue({ has_data: true });
+    fetchDashboardGraph.mockResolvedValue({
+      nodes: [{ id: "n1", name: "Docker" }],
+      edges: [],
+    });
+    const { container } = render(
+      <KnowledgeGraph
+        provider="claude"
+        startDrag={startDrag}
+        wikiContainerRef={{ current: null }}
+        wikiWidth={360}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("concept-graph")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("trigger-activate"));
+    await waitFor(() =>
+      expect(screen.getByTestId("wiki-pane")).toBeInTheDocument(),
+    );
+    const handle = container.querySelector(".resize-handle-wiki");
+    expect(handle).not.toBeNull();
+    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(startDrag).toHaveBeenCalledWith("wiki");
+  });
+
+  it("close button on the wiki pane closes it", async () => {
+    fetchDashboardGraphStatus.mockResolvedValue({ has_data: true });
+    fetchDashboardGraph.mockResolvedValue({
+      nodes: [{ id: "n1", name: "Docker" }],
+      edges: [],
+    });
+    render(<KnowledgeGraph provider="claude" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("concept-graph")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("trigger-activate"));
+    await waitFor(() =>
+      expect(screen.getByTestId("wiki-pane")).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByTestId("wiki-close"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("wiki-pane")).not.toBeInTheDocument(),
+    );
   });
 });
 
@@ -215,14 +347,12 @@ describe("KnowledgeGraph — state = ready (triggers import)", () => {
       expect(screen.getByTestId("concept-graph")).toBeInTheDocument()
     );
     expect(importDashboardGraph).toHaveBeenCalledTimes(1);
-    // Line 52 check: setGraphStatus(data.nodes.length > 0 ? "ready" : "none")
-    // With 1 node → status "ready" → ConceptGraph renders + Regenerate button.
     expect(
       screen.getByRole("button", { name: "Regenerate" })
     ).toBeInTheDocument();
   });
 
-  it("status='ready' + import OK + empty graph sets status='none' (line 52 false branch)", async () => {
+  it("status='ready' + import OK + empty graph sets status='none'", async () => {
     fetchDashboardGraphStatus.mockResolvedValue({
       has_data: false,
       status: "ready",
@@ -230,7 +360,6 @@ describe("KnowledgeGraph — state = ready (triggers import)", () => {
     importDashboardGraph.mockResolvedValue({ ok: true });
     fetchDashboardGraph.mockResolvedValue({ nodes: [], edges: [] });
     render(<KnowledgeGraph provider="claude" />);
-    // Empty graph → "Waiting for concept graph extraction to start..." placeholder
     await waitFor(() =>
       expect(
         screen.getByText(/Waiting for concept graph extraction/)
@@ -238,18 +367,15 @@ describe("KnowledgeGraph — state = ready (triggers import)", () => {
     );
   });
 
-  it("ignores late status resolution after unmount (line 26 cancellation branch)", async () => {
+  it("ignores late status resolution after unmount", async () => {
     let resolveStatus;
     fetchDashboardGraphStatus.mockReturnValue(
       new Promise((res) => { resolveStatus = res; })
     );
     const { unmount } = render(<KnowledgeGraph provider="claude" />);
     unmount();
-    // Late resolve — the cancelled check at line 26 fires, no state update.
     resolveStatus({ has_data: false, status: "none" });
     await new Promise((r) => setTimeout(r, 10));
-    // No assertion needed — absence of a React warning about setting state on
-    // unmounted component proves the guard fired.
   });
 
   it("shows 'Importing graph into database...' while import is pending", async () => {
@@ -361,7 +487,6 @@ describe("KnowledgeGraph — regenerate button", () => {
       expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
     );
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
-    // Still an error after retry fails
     await waitFor(() =>
       expect(
         screen.getByText(/Graph generation failed/)

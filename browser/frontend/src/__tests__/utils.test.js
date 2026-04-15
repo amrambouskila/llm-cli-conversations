@@ -7,6 +7,7 @@ import {
   sanitizeHtml,
   formatStatsText,
   exportMarkdown,
+  wikiSlug,
 } from "../utils";
 
 describe("formatNumber", () => {
@@ -164,6 +165,38 @@ describe("renderMarkdown", () => {
     const out = renderMarkdown("```js\nx\n```");
     expect(out).toContain('<code class="language-js">');
   });
+
+  it("rewrites [[Label]] to a wiki-link anchor with computed slug", () => {
+    const out = renderMarkdown("[[Docker]]");
+    expect(out).toContain('<a class="wiki-link" data-wiki-slug="Docker">Docker</a>');
+  });
+
+  it("computes the wiki slug via the 3-substitution rule", () => {
+    const out = renderMarkdown("[[foo bar]]");
+    expect(out).toContain('data-wiki-slug="foo_bar"');
+    expect(out).toContain(">foo bar<");
+  });
+
+  it("handles multiple wiki links in one block", () => {
+    const out = renderMarkdown("see [[A]] and [[B]] together");
+    const matches = out.match(/wiki-link/g);
+    expect(matches?.length).toBe(2);
+  });
+
+  it("handles wiki labels with all three special chars", () => {
+    const out = renderMarkdown("[[a/b c:d]]");
+    expect(out).toContain('data-wiki-slug="a-b_c-d"');
+  });
+
+  it("does not match unclosed brackets", () => {
+    const out = renderMarkdown("just [[ one bracket");
+    expect(out).not.toContain("wiki-link");
+  });
+
+  it("does not match a label containing brackets (regex disallows them)", () => {
+    const out = renderMarkdown("[[bad ] label]]");
+    expect(out).not.toContain('<a class="wiki-link"');
+  });
 });
 
 describe("highlightHtml", () => {
@@ -248,6 +281,58 @@ describe("sanitizeHtml (direct)", () => {
 
   it("is a no-op when no tags are present", () => {
     expect(sanitizeHtml("plain text")).toBe("plain text");
+  });
+
+  it("preserves data-wiki-slug + class on opening <a>", () => {
+    expect(
+      sanitizeHtml('<a class="wiki-link" data-wiki-slug="docker">Docker</a>')
+    ).toBe('<a class="wiki-link" data-wiki-slug="docker">Docker</a>');
+  });
+
+  it("preserves data-wiki-slug on <a> with no class", () => {
+    expect(sanitizeHtml('<a data-wiki-slug="x">y</a>')).toBe(
+      '<a data-wiki-slug="x">y</a>'
+    );
+  });
+
+  it("falls back to bare <a> when neither class nor data-wiki-slug present", () => {
+    expect(sanitizeHtml('<a href="evil.com">x</a>')).toBe("<a>x</a>");
+  });
+
+  it("does NOT preserve data-wiki-slug on non-<a> tags", () => {
+    expect(sanitizeHtml('<p data-wiki-slug="x">y</p>')).toBe("<p>y</p>");
+  });
+
+  it("does NOT apply the <a> branch to a closing </a>", () => {
+    // </a> with attrs falls through to the closing-tag handling, returning </a>.
+    expect(sanitizeHtml('</a data-wiki-slug="x">')).toBe("</a>");
+  });
+});
+
+describe("wikiSlug", () => {
+  it("replaces / with -", () => {
+    expect(wikiSlug("a/b")).toBe("a-b");
+  });
+
+  it("replaces space with _", () => {
+    expect(wikiSlug("foo bar")).toBe("foo_bar");
+  });
+
+  it("replaces : with -", () => {
+    expect(wikiSlug("a:b")).toBe("a-b");
+  });
+
+  it("combines all three substitutions", () => {
+    expect(wikiSlug("foo/bar baz:qux")).toBe("foo-bar_baz-qux");
+  });
+
+  it("is a no-op when no special chars are present", () => {
+    expect(wikiSlug("plain")).toBe("plain");
+    expect(wikiSlug("Already_Slug-Like")).toBe("Already_Slug-Like");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(wikiSlug("")).toBe("");
   });
 });
 
