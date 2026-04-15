@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { renderMarkdown } from "../utils";
 import { deleteSummary } from "../api";
 
@@ -128,10 +128,15 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
     })();
 
     return () => { cancelled.value = true; cleanup(); };
+    // Intentionally only depends on summaryKey — the callback props are new
+    // closures every render and would cause the summary request to refire
+    // continuously. The fresh-prop assumption is documented in the parent
+    // (ContentViewer wires summaryKey ↔ callbacks deterministically).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryKey]);
 
   const handleRegenerate = async () => {
-    if (!summaryKey || !onRequest) return;
+    /* c8 ignore next 1 */ if (!summaryKey || !onRequest) return;
     cleanup();
     // Synchronously enter the pending state with a "starting" sentinel so
     // React doesn't briefly render "Generating summary..." (null progress)

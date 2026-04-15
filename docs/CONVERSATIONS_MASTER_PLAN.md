@@ -2,9 +2,9 @@
 
 **The single source of truth for this project.** Covers product direction, architectural decisions, tech stack, phased migration, and the full QA/UAT test plan. Supersedes and replaces `PLAN.md` and `docs/test_plan.md`.
 
-> **Current phase: 7 — in progress. 7.1 ✅ + 7.2 ✅ + 7.4 (backend ratchet 70→90) ✅. Remaining: 7.3 (frontend decomposition + ESLint), 7.5 (cost audit + UI breakdown), 7.6 (final docs), plus the rest of 7.4 (95→100 ratchet).**
+> **v1.0.0 shipped 2026-04-14 — core observability + recall platform feature-complete. See `docs/status.md` for state, `docs/versions.md` for the changelog.**
 >
-> Update the "Current phase" line above as each phase completes.
+> **Phase 8 planned (v1.1.0 target): in-tab Graphify wiki exploration.** Clicking a concept in the Knowledge Graph tab should surface the Graphify-produced community/god-node wiki article inside the tab instead of routing to Conversations. Keeps users in the exploration context and makes the wiki content (currently unused by the UI) first-class. Detailed spec below at §10 Phase 8.
 
 ---
 
@@ -145,12 +145,11 @@ gantt
 
 ```mermaid
 graph LR
-    app[app.py] --> routes
-    app --> db
-    app --> load
-    app --> index_store
+    app[app.py<br/>lifespan, SPA, /api/ready, /api/update] --> routes
+    app --> db[db.py<br/>DI providers]
+    app --> load[load.py<br/>startup load + recompute_costs]
 
-    subgraph routes
+    subgraph routes["routes/"]
         proj[projects.py]
         seg[segments.py]
         conv[conversations.py]
@@ -160,32 +159,50 @@ graph LR
         dash[dashboard.py]
     end
 
-    routes --> db[db.py]
-    routes --> models[models.py]
-    routes --> schemas[schemas.py]
-    seg --> search[search.py]
-    seg --> embed[embed.py]
+    subgraph services["services/ (7 classes + _filter_scope)"]
+        search_svc[SearchService]
+        session_svc[SessionService]
+        dashboard_svc[DashboardService]
+        graph_svc[GraphService]
+        project_svc[ProjectService]
+        stats_svc[StatsService]
+        summary_svc[SummaryService]
+    end
 
-    load --> db
-    load --> models
+    subgraph repos["repositories/ (5 classes)"]
+        sess_repo[SessionRepository]
+        seg_repo[SegmentRepository]
+        tool_repo[ToolCallRepository]
+        topic_repo[SessionTopicRepository]
+        concept_repo[ConceptRepository]
+    end
+
+    routes -->|Depends| services
+    services --> repos
+    services -.->|search helpers| search_mod[search.py<br/>parse_query + SearchFilters]
+    services -.->|embedding| embed[embed.py<br/>ONNX all-MiniLM-L6-v2]
+    repos --> db
+    db --> models[models.py<br/>SQLAlchemy 2.0]
+    db --> schemas[schemas.py<br/>Pydantic v2]
+
     load --> parser[parser.py]
     load --> jsonl[jsonl_reader.py]
     load --> topics[topics.py]
     load --> classify[classify.py]
     load --> import_graph[import_graph.py]
     load --> embed
+    load --> models
 
-    import_graph --> db
     import_graph --> models
 
-    db --> models
-
+    style services fill:#e1f5ff
+    style repos fill:#f3e5f5
     style embed fill:#9cf
     style import_graph fill:#fc9
-    style search fill:#9cf
+    style search_mod fill:#9cf
 ```
 
-Blue = Phase 5 semantic search additions. Orange = Graphify enrichment (optional).
+Light blue = Phase 7.1 service layer. Lavender = Phase 7.1 repository layer. Deep blue = Phase 5 semantic search additions. Orange = Graphify enrichment (optional).
 
 ---
 
@@ -299,6 +316,24 @@ Graphify extraction can take 20-60s per file. When running the launcher and walk
 
 ### Why no tests yet
 Deliberate. Phases 0-5 built features that needed fast iteration. Phase 6 adds the full test suite (pytest + vitest, 100% coverage target) + GitHub Actions CI. Tests landing after features is a conscious tradeoff for a single-user personal project.
+
+### Cost formula & the 1.25× cache-write premium (Phase 7.5)
+Per-session cost is computed once at load time in `browser/backend/load.py::estimate_cost_breakdown` (pure function) and stored denormalized on `sessions.estimated_cost`. The formula is:
+
+```
+cost_usd = input_tokens          × input_price           / 1_000_000
+         + output_tokens         × output_price          / 1_000_000
+         + cache_read_tokens     × input_price × 0.10    / 1_000_000   # CACHE_READ_DISCOUNT
+         + cache_creation_tokens × input_price × 1.25    / 1_000_000   # CACHE_WRITE_PREMIUM_5M
+```
+
+Pricing table lives in the same module (`MODEL_PRICING`): opus-4-6 $15/$75, sonnet-4-6 $3/$15, haiku-4-5 $0.80/$4 per 1M tokens. Unknown models fall back to sonnet pricing.
+
+- **Deliberate non-detection of the 1-hour TTL premium (2.0×)** — Anthropic's published rate for 1h-TTL cache writes is 2.0×, but the JSONL metadata we store has no per-turn TTL signal. Claude Code defaults to 5m TTL, so treating all `cache_creation_tokens` as 5m is correct for the common case. If a future phase exposes TTL per cache row, the 1h premium can be applied selectively.
+- **Deliberate non-detection of the 1M-context tier (1.5×)** — Anthropic charges 1.5× standard rates on calls with >200K input tokens. We don't track per-call input size, so this isn't detected. Net under-estimation is small in practice (few sessions exceed the threshold).
+- **Per-session `estimated_cost` stays denormalized** — used as the fast sort key for `Top 5 Most Expensive Sessions` (`ORDER BY estimated_cost DESC LIMIT 5`) and for the anomaly threshold (`mean + 2σ`). Rank order is stable under small formula changes, so the sort doesn't need to refer to recomputed values.
+- **Displayed cost values come from the recomputed breakdown**, not `SUM(estimated_cost)` — the `DashboardService._compute_cost_breakdown()` helper groups by model at query time and applies pricing via `estimate_cost_breakdown()` per group. This guarantees `summary.total_cost == sum(cost_breakdown)` to within rounding and prevents the penny-drift trap that would appear if the two were computed from different sources.
+- **Historical rows are auto-recomputed on app startup** via `load.recompute_session_costs()` called from the FastAPI lifespan after `load_all()`. Idempotent: only issues UPDATE for rows where the stored value drifted by more than $0.0001 from the recomputed one. This means shipping a formula change (e.g., the 1.25× premium added in Phase 7.5) updates every existing row automatically without requiring the user to reload.
 
 ### What we explicitly rejected
 - **Django / Tortoise / Peewee** — Django ORM is too heavyweight, others lack async maturity
@@ -943,7 +978,7 @@ CI must be green before Phase 7 begins — the refactor needs both the test suit
 
 ### Phase 7 — OOP Restructure & Final Documentation
 
-**Status: IN PROGRESS. 7.1 ✅, 7.2 ✅, 7.4 backend ratchet ✅. 7.3, 7.5, 7.6, and 7.4 final ratchet still pending.**
+**Status: ✅ COMPLETE (2026-04-14). Project shipped as v1.0.0.** Every sub-phase is ✅ including the final 100% backend coverage gate and the full documentation pass.
 
 **Goal:** Refactor the entire backend to proper OOP patterns (service layer + repository pattern + dependency injection). Decompose the over-coupled frontend into focused, individually tested components. Add ESLint to the frontend pipeline. Fix the two latent backend bugs flagged by Phase 6.5. Ratchet CI coverage gates toward 100% as decomposition lands. Finalize all documentation. **Project completes here.**
 
@@ -988,23 +1023,19 @@ Refactored backend from functional route handlers with inline query logic into p
 
 Live-stack verification (post-`docker compose up --build`): `project:IMPORTANT-Projects-conversations` returns 20 results; `after:2026-03-01 before:2026-04-14` returns 50 results — both formerly 500s now 200s.
 
-#### 7.3 Frontend component decomposition + ESLint
+#### 7.3 Frontend component decomposition + ESLint ✅
 
-The 633-line `App.jsx` god component (with 22 `useState` hooks, 10 `useEffect` blocks, and 15 `useCallback` definitions) is the largest structural tech debt in the frontend. Phase 7.3 decomposes it and adds tests for the components Phase 6.6 deferred.
+**Status: COMPLETE.** App.jsx shrunk from 709 → 318 LOC. New components extracted: `Header`, `SearchBar`, `FilterBar`, `ProjectsPane`, `RequestsPane`, `ContentPane`, `MetadataPane`, `ConversationsTab`. Nine new custom hooks colocated in `src/hooks/`: `useBackendReady`, `useProviders`, `useTheme`, `useSummaryTitles`, `useKeyboardShortcuts`, `useResizeHandles`, `useProjectSelection`, `useSearch`, `useHideRestore`. Each component + hook has its own test file under `src/__tests__/` with per-file vitest thresholds. Total frontend tests jumped from 104 → 580+ across 33 files. ESLint v9 flat config landed at `browser/frontend/eslint.config.js` with `react-hooks/rules-of-hooks` + `react-hooks/exhaustive-deps` set to `error`. `lint-frontend` job added to `.github/workflows/ci.yml`. Tests for `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx` all landed (the "6.6-deferred" list is cleared).
 
-- **Decompose `App.jsx`** into focused components: `Header`, `SearchBar`, `ProjectsPane`, `RequestsPane`, `ContentPane`, `MetadataPane`, `KeyboardShortcuts` (custom hook), `ResizeHandles` (custom hook). Each lives in its own file per OOP isolation rule. State management may move to a Zustand store if app-state lifting becomes painful.
-- **Add tests for the 6.6-deferred components**: `Charts.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `KnowledgeGraph.jsx`, `Heatmap.jsx`, `ProjectList.jsx`, `RequestList.jsx`, `ContentViewer.jsx`, `SummaryPanel.jsx`. Per-file thresholds added to `vitest.config.js` as each lands.
-- **Export and test (or prune) the unreachable defensive branches** in `utils.js` (`sanitizeHtml` strip path) and `FilterChips.jsx` (`getOptionsForFilter` fallback) flagged in 6.6.
-- **Add ESLint** with `@eslint/js` recommended + `eslint-plugin-react` + `eslint-plugin-react-hooks`. Add `lint` script to `package.json`. Add `lint-frontend` job to `ci.yml` mirroring `lint-backend`. Fix all surfaced violations.
+#### 7.4 CI gate ratchet ✅
 
-#### 7.4 CI gate ratchet
+**Status: COMPLETE (2026-04-14). Backend at 100% lines + branches + functions. Frontend at 100% lines; 96% branches + 97% functions (residuals are inline JSX arrow wrappers and jsdom-unreachable Chart.js callbacks).**
 
-- ✅ **Backend `--cov-fail-under` 70 → 90** landed with 7.1. Total coverage 94.56% because services + repositories are directly traced (the httpx ASGITransport limitation that capped Phase 6.7 at 70% was about routes, not services — route handlers became thin shells in 7.1 so the issue resolves naturally).
-- ⏳ Backend `--cov-fail-under` 90 → 95 after 7.5 cost tests land
-- ⏳ Backend `--cov-fail-under` 95 → 100 on `services/` + `repositories/` specifically (final gate)
-- ⏳ Frontend per-file thresholds added for each newly-tested component (lands with 7.3)
-- ⏳ `lint-frontend` job added (gated on the new ESLint config from 7.3)
-- Optional: coverage report uploaded to a coverage badge service (Codecov or Shields.io) for README badges
+- ✅ **Backend `--cov-fail-under` 70 → 90** landed with 7.1.
+- ✅ **Backend `--cov-fail-under` 90 → 94** landed with 7.5.
+- ✅ **Backend `--cov-fail-under` 94 → 100** landed in 7.4 final (2026-04-14). 751 tests, zero missing statements. Two pragmas, both under global CLAUDE.md exception rules: `load.py:681` `if __name__ == "__main__":` (exception a) and `services/search_service.py:249` unreachable `return scores` in `_rrf_merge` (exception b: all contributions are > 0 by construction). The coverage ratchet required new tests covering: FastAPI lifespan + `_startup_load` success/failure, refactored `_register_spa_routes` for SPA serving, `load.py` `main()` CLI entry + embedding failure + graphify failure, parser edge cases (timestamp fallback, missing heading, orphan segments), `import_graph.py` partial-stem match + blank-name skip, dashboard `get_graph` auto-import fallback + 200-concept pruning, `DashboardService._filter_only_retrieval`/`_build_snippets`/`_extract_snippet` branch coverage, and several smaller service-layer defensive guards.
+- ✅ **Frontend per-file thresholds** every module at 100% lines enforced in `browser/frontend/vitest.config.js`. 736 tests pass. Hooks directory is at 100/100/100. Components directory is at 100/95/98. The 4 files (`App.jsx`, `Dashboard.jsx`, `ConceptGraph.jsx`, `SummaryPanel.jsx`) with sub-100% branches or functions have explicit per-file gates documented in `vitest.config.js` reflecting the jsdom-inherent limits.
+- ✅ **`lint-frontend` job** in `ci.yml` (ESLint v9 flat config, shipped with 7.3).
 
 #### 7.5 Cost calculation audit + UI breakdown (user-reported anomaly)
 
@@ -1079,16 +1110,84 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 - The `$644` number is explained in either a comment or UI label describing exactly what it counts.
 - Master plan §5 gets a new architectural-decision entry documenting the formula, the 1.25× cache-write premium, and the deliberate non-detection of the 1M-context tier.
 
-#### 7.6 Final documentation
+#### 7.6 Final documentation ✅
 
-- Update this master plan to reflect the post-7.1 service/repository architecture
-- Update §3 Mermaid module-dependency diagram for the new service + repository layout
-- Update §5 architectural decisions to add the cost-formula entry (produced by 7.5)
-- Update README.md with: testing section, CI badges, post-restructure architecture diagram
-- Mark all Phase 7 sub-sections complete in this document
-- Final pass on §13 QA / UAT test plan to ensure every section reflects current behavior post-refactor
+**Status: COMPLETE (2026-04-14).**
 
-**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% on service/repository code. Frontend decomposed with per-component test coverage. Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **Project complete.**
+- ✅ Master plan §3 Mermaid module-dependency diagram updated to show post-7.1 services + repositories + DI chain.
+- ✅ Master plan §10 — every Phase 7 sub-section marked ✅ COMPLETE with shipped details.
+- ✅ Master plan §11 Phase Summary Table — Phase 7 row → ✅ Done (see below).
+- ✅ Master plan §13 QA / UAT test plan — Phase 7.5 test cases added (top-expensive-sessions + cost-breakdown endpoints + UI sections).
+- ✅ Current-phase banner at the top → "Project complete."
+- ✅ README.md — CI badges, post-7.5 architecture Mermaid, Testing section, cost-formula summary, updated `browser/` tree listing.
+- ✅ `docs/status.md` created — current state, architecture summary, coverage posture, CI overview.
+- ✅ `docs/versions.md` created — v1.0.0 changelog with phase-by-phase rollup.
+
+**Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% lines + branches + functions. Frontend decomposed with per-component test coverage (100% lines, 96% branches, 97% functions). Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **v1.0.0 shipped 2026-04-14.**
+
+---
+
+### Phase 8 — Knowledge Graph wiki integration (planned, v1.1.0)
+
+**Status: PLANNED. Post-v1.0.0 follow-up.**
+
+**Goal.** When a user clicks a concept node in the `ConceptGraph` (inside the Knowledge Graph tab), surface the Graphify-produced wiki article for that concept **in-place** (inside the same tab) instead of navigating away to the Conversations tab. The conversation drill-through stays available as an explicit action, but the default click behavior becomes "explore the wiki", not "leave the graph."
+
+**Why.** Graphify already emits a `graphify-out/wiki/` directory (`index.md` + one article per Leiden community + one article per god-node) as part of its `to_wiki(G, out)` pipeline (see `graphify.wiki` module). The current UI makes zero use of it — clicking a concept flips `activeTab` to `"conversations"` and puts `topic:<name>` in the search bar, which is only useful for "find sessions about X" and throws away all the synthesized relationship content Graphify computed. The graph becomes a navigation shortcut rather than a knowledge-exploration surface. Phase 8 unlocks the wiki as a first-class surface without giving up the session-drill-through affordance users already rely on.
+
+**Target UX.**
+- Knowledge Graph tab splits horizontally: **left pane = force-directed graph** (unchanged, current `ConceptGraph.jsx`), **right pane = wiki article viewer** (new, resizable, starts hidden; opens when a concept is clicked).
+- Clicking a concept node:
+  1. Highlights the node in the graph.
+  2. Loads the wiki article for that concept's community (or its god-node article if the node is itself a god-node) into the right pane.
+  3. Does NOT change `activeTab` — user stays in the Knowledge Graph tab.
+- Wiki pane contents: concept/community title, markdown body rendered via the existing `renderMarkdown` helper, inline `[[WikiLink]]` links become clickable and swap the pane to that article.
+- Wiki pane action bar: "Open in Conversations" button (the legacy behavior — flips to the Conversations tab with `topic:<concept_name>` prefilled), "Close pane" button, breadcrumb trail when navigating via wiki-links.
+- Graceful degradation: if `graphify-out/wiki/` is absent (Graphify not run, or older extractions), the pane renders "Wiki not available — regenerate the concept graph to build it." with a **Regenerate** button that calls the existing `triggerDashboardGraphGenerate`.
+
+**Implementation plan.**
+
+#### 8.1 Backend: wiki endpoints + extraction wire-up
+
+- Extend `graph_extract.py` so the existing extraction pipeline also writes the wiki by calling `graphify.wiki.to_wiki(G, out_dir)` after `to_json`. Today the pipeline calls `build_from_json + cluster + to_json` only. The call is already one line given the library exposes it.
+- `routes/graph.py` (new, or extend `routes/dashboard.py`): add
+  - `GET /api/graph/wiki/index` → returns `{ title, markdown, articles: [{ slug, title, kind: 'community'|'god_node' }] }` parsed from `graphify-out/wiki/index.md`.
+  - `GET /api/graph/wiki/{slug}` → returns `{ slug, title, markdown }` for the named article. 404 if missing.
+  - `GET /api/graph/wiki/lookup?concept_id=...&concept_name=...` → resolves a graph node to its wiki slug (prefers god-node article; falls back to community article). Returns `{ slug }` or 404. Lives here so frontend doesn't have to duplicate `_safe_filename` logic.
+- Security: path-traversal guard on `{slug}` (reject `..`, `/`, nulls); resolve `(GRAPHIFY_OUT / "wiki" / f"{slug}.md").resolve()` and assert the resolved path is still under `GRAPHIFY_OUT / "wiki"`. Same pattern as Phase 7.4's SPA guard refactor.
+- `services/graph_service.py` gains `load_wiki_index()`, `load_wiki_article(slug)`, `resolve_wiki_slug(concept_id, concept_name)`. All return `None` on missing — route layer maps to 404.
+- `schemas.py` adds `WikiIndex`, `WikiArticle`, `WikiLookup` response models.
+
+#### 8.2 Frontend: wiki pane component + click-semantics rewire
+
+- New `src/components/ConceptWikiPane.jsx` — renders the article markdown, handles inline `[[WikiLink]]` rewriting so they become clickable buttons that swap the pane, shows breadcrumbs, hosts the "Open in Conversations" action.
+- New `src/hooks/useConceptWiki.js` — owns the `selectedSlug` state + the fetch/cache + `AbortController` lifecycle. Same shape as the existing `useCostBreakdown` hook.
+- `src/components/KnowledgeGraph.jsx` grows a split-pane layout: graph on left, `<ConceptWikiPane>` on right. The pane shows/hides based on whether `selectedSlug` is non-null. Width state lives in the existing `useResizeHandles` hook (add a new handle key).
+- `src/components/ConceptGraph.jsx` `onConceptClick` no longer bubbles up to `App.jsx`. Instead, `KnowledgeGraph.jsx` passes down its own handler that calls `resolveWikiSlug(concept_id, concept_name)` → sets `selectedSlug`. The existing prop is renamed to `onOpenInConversations` and is called only when the user clicks the explicit "Open in Conversations" button.
+- `src/App.jsx` `handleDashboardNavigate(null, null, "topic:X")` stays intact — that's still the handler for the "Open in Conversations" button, just no longer triggered by the concept click itself.
+- `src/api.js` adds `fetchWikiIndex()`, `fetchWikiArticle(slug)`, `resolveWikiSlug({ concept_id, concept_name })`.
+
+#### 8.3 Tests
+
+- Backend: new `tests/test_api_graph_wiki.py` (happy path, missing file → 404, path-traversal → 404, resolve lookup prefers god-node over community); extend `tests/services/test_graph_service.py` for the three new service methods.
+- Frontend: new `__tests__/ConceptWikiPane.test.jsx` (markdown render, wiki-link click swaps slug, "Open in Conversations" fires callback, empty/error states); new `__tests__/hooks/useConceptWiki.test.js` (abort on slug change, error swallow on AbortError, null-slug guard); update `__tests__/ConceptGraph.test.jsx` for the new click semantics; update `__tests__/KnowledgeGraph.test.jsx` for the split-pane render. Tests must maintain the existing 100% lines gate.
+
+#### 8.4 Docs
+
+- This document: mark Phase 8 ✅ with shipped details after it lands.
+- README: add a Knowledge Graph tab mini-section describing wiki exploration.
+- `docs/status.md`: replace the "no further phases" line with a pointer to Phase 8 after shipping (or keep the pointer in "what's next" while planned).
+- `docs/versions.md`: add **v1.1.0** entry on ship.
+- Master plan §13 QA/UAT: new subsection **13.7.16 Knowledge Graph wiki pane** covering the split-pane layout, wiki link navigation, breadcrumb, degradation, and the "Open in Conversations" button.
+
+**Acceptance criteria.**
+
+- Clicking a concept node in the KG tab does NOT change `activeTab` — user stays on the Knowledge Graph tab.
+- The wiki pane renders the matching article's markdown with inline `[[WikiLink]]` anchors working.
+- `graphify-out/wiki/index.md` + per-community + per-god-node pages are regenerated whenever the graph pipeline runs (no manual step).
+- Path-traversal attempts on `/api/graph/wiki/{slug}` return 404 with no file read outside `graphify-out/wiki/`.
+- Degraded state (missing wiki dir) shows an inline empty-state with a Regenerate button — no crash.
+- Frontend coverage posture stays at 100% lines; backend stays at 100% lines + branches + functions.
 
 ---
 
@@ -1103,9 +1202,10 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 | 4 — Dashboard | ✅ Done | KPI dashboard (6 charts + heatmap + anomalies), Knowledge Graph tab (d3 force layout + settings), automated concept extraction pipeline | Nothing | Dashboard, KnowledgeGraph, ConceptGraph, Heatmap components; Chart.js + d3 deps |
 | 5 — Semantic Search | ✅ Done | Vector embeddings (all-MiniLM-L6-v2 ONNX) + hybrid retrieval (RRF + recency/length/exact-match) + community-based re-ranking. Search mode + graph badges in UI. Timestamped launcher logs. | Nothing | Relevance bar per result, search mode + graph badges in search bar |
 | 6 — Cleanup, Testing & CI | ✅ Done | All 7 sub-phases shipped: dead code removed (6.1–6.4), 333 backend pytest tests with 2 latent bugs flagged for Phase 7 (6.5), 104 frontend vitest tests across 6 files with 4 unreachable defensive branches flagged for Phase 7 (6.6), GitHub Actions ci.yml + release.yml on main/staging/dev with lint/test/coverage-gate/build/docker-build, ruff fully green after 272-error cleanup (6.7). Safety net for Phase 7 in place. | Nothing | None (internal quality) |
-| 7 — OOP Restructure, Cost Audit & Final Docs | ⏳ In progress — 7.1 + 7.2 + 7.4(partial) ✅; 7.3/7.5/7.6 pending | **SHIPPED:** backend service+repository extraction with 7 services + 5 repositories + DI wiring + Pydantic response_models on every route (7.1); two Phase 6.5-flagged latent bugs fixed via XPASS handoff, decorators removed, live-verified (7.2); backend coverage gate 70→90 with total coverage at 94.56% (7.4 initial); 621 total tests (+179 dedicated service/repository tests across 12 new files). **PENDING:** frontend decomposition + ESLint + tests for 6.6-deferred components (7.3), cost audit + UI breakdown (7.5), backend gate 90→95→100 + frontend per-file thresholds + `lint-frontend` CI job (7.4 remainder), final documentation pass (7.6) | None (refactor under Phase 6 test/CI safety net — 442→621 pass end-to-end; Phase 7.5 cost audit will slightly adjust `estimated_cost` values when cache-write premium lands) | Unchanged so far (7.3 will decompose App.jsx; 7.5 will add cost-breakdown bar + Top-5 widget) |
+| 7 — OOP Restructure, Cost Audit & Final Docs | ✅ Done | **SHIPPED:** 7.1 backend service+repository extraction (7 services + 5 repositories + DI wiring + Pydantic response_models). 7.2 two latent bug fixes via XPASS handoff. 7.3 App.jsx decomposition 709→318 LOC + 9 new hooks + ESLint v9 + lint-frontend CI job + 736 frontend tests. 7.4 final **backend 100% coverage** + frontend 100% lines (96% branches / 97% funcs) with per-file thresholds enforced. 7.5 cost formula (`CACHE_WRITE_PREMIUM_5M = 1.25`) + idempotent startup recompute + 4-way breakdown endpoints + Dashboard Cost Breakdown + Top 5 widget + MetadataPane Cost Attribution + retirement of the per-session 80/20 heuristic. 7.6 full documentation pass: master plan §3 Mermaid refresh + §10 phase status updates + §13 7.5 test cases + banner; `docs/status.md` + `docs/versions.md` created; README refreshed. | None | Final UI state as shipped in v1.0.0. |
+| 8 — Knowledge Graph wiki integration | 📋 Planned (v1.1.0) | Wire `graphify.wiki.to_wiki()` into the extraction pipeline so `graphify-out/wiki/` is always regenerated. New `GET /api/graph/wiki/{index,slug,lookup}` endpoints on `GraphService` + path-traversal guard. KG tab gains a split pane (`ConceptGraph` + new `ConceptWikiPane`). Concept click loads the matching community/god-node article in-place instead of flipping `activeTab`. New `useConceptWiki` hook; new `api.js` wrappers. "Open in Conversations" action preserves the session-drill-through affordance as an explicit click. Inline `[[WikiLink]]` anchors navigate within the pane with a breadcrumb trail. Tests land to keep the 100% lines gate (backend + frontend). | **User-visible:** clicking a concept no longer leaves the Knowledge Graph tab by default — users who rely on that flow must click the new "Open in Conversations" button instead. | New `ConceptWikiPane.jsx` component; `KnowledgeGraph.jsx` becomes a split-pane layout; `ConceptGraph.jsx` click semantics rewired (props renamed `onConceptClick` → `onOpenInConversations`); new `useConceptWiki` hook. |
 
-Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. **Phase 7 is the final phase: a full OOP restructure under that safety net, then project completion.**
+Every phase produces a working system. Phases 0-2 invisible to the frontend. Phase 3 is the first user-visible improvement (session-level search + filters). Phase 4 is the second (dashboard + concept graph). Phase 5 is the third (semantic search). Phase 6 ships the test + CI safety net. Phase 7 completes the OOP restructure, cost audit, and final docs. **v1.0.0 shipped 2026-04-14 — project complete.**
 
 ---
 
@@ -1368,6 +1468,33 @@ curl -s "http://localhost:5050/api/dashboard/projects?provider=claude&date_from=
 curl -s "http://localhost:5050/api/dashboard/tools?provider=claude&model=opus" | python3 -m json.tool
 ```
 **Expected:** Each returns filtered data. Project filter: `project_count` = 1. Date filter: only sessions in range. Model filter: only tool calls from sessions using that model.
+
+#### 13.1.34a Top expensive sessions (P7.5)
+```bash
+curl -s "http://localhost:5050/api/dashboard/top-expensive-sessions?provider=claude&limit=5" | python3 -m json.tool
+```
+**Expected:** Array of up to `limit` items. Each has: `session_id`, `project`, `model`, `date` (ISO 8601 or null), `total_cost` (float USD), `cache_read_pct` (float 0–100), `conversation_id`. Array is sorted by `total_cost` DESC. For every row: `0 <= cache_read_pct <= 100`.
+
+#### 13.1.34b Cost breakdown on dashboard endpoints (P7.5)
+```bash
+curl -s "http://localhost:5050/api/dashboard/summary?provider=claude" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['cost_breakdown'])"
+curl -s "http://localhost:5050/api/dashboard/projects?provider=claude" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['cost_breakdown'])"
+curl -s "http://localhost:5050/api/dashboard/models?provider=claude" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['cost_breakdown'])"
+```
+**Expected:** Each response row carries `cost_breakdown: { input_usd, output_usd, cache_read_usd, cache_create_usd, total_usd }`. Summary-level: `total_cost ≈ cost_breakdown.total_usd` within 1¢. Per-project / per-model: `total_cost == cost_breakdown.total_usd` within 1¢.
+
+#### 13.1.34c Per-session cost breakdown (P7.5)
+```bash
+SESSION_ID=$(curl -s "http://localhost:5050/api/search?q=docker" | python3 -c "import sys,json; r=json.load(sys.stdin); print(r[0]['session_id'] if r else '')")
+curl -s "http://localhost:5050/api/sessions/${SESSION_ID}/cost-breakdown" | python3 -m json.tool
+```
+**Expected:** `{ input_usd, output_usd, cache_read_usd, cache_create_usd, total_usd }`. All floats ≥ 0. `total_usd ≈ input_usd + output_usd + cache_read_usd + cache_create_usd` within 1¢. 404 when `session_id` doesn't exist.
+
+#### 13.1.34d Conversation view exposes session_id (P7.5)
+```bash
+curl -s "http://localhost:5050/api/projects/conversations/conversation/<conv_id>?provider=claude" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'session_id' in d; print(d['session_id'])"
+```
+**Expected:** Non-empty `session_id` field that can be passed to `/api/sessions/{id}/cost-breakdown` without a separate lookup.
 
 #### 13.1.35 Search status (P5)
 ```bash
@@ -1840,6 +1967,44 @@ Full-screen tab (not a dashboard section).
 | 3 | Select "7d" preset | Summary cards, all charts, heatmap, anomalies all update |
 | 4 | Combine project dropdown + date preset | Both filters active simultaneously across all charts |
 | 5 | Clear Filters | All charts return to unfiltered state |
+
+#### 13.7.13 Cost Breakdown section (P7.5)
+
+| # | Check | Expected |
+|---|-------|----------|
+| 1 | Section header | "Cost Breakdown" appears directly below the summary cards row |
+| 2 | Scope line | "$X.XX across N sessions · all time" (or active filter list joined with `·`) |
+| 3 | Stacked bar | Four segments (input, output, cache read, cache write) colored distinctly; any zero bucket is skipped |
+| 4 | Segment hover | Tooltip shows `{label}: $X.XX (YY.Y%)` |
+| 5 | Legend | 4 items with swatch + label + `$X.XX (YY.Y%)`; all four always present (even when a bucket is 0) |
+| 6 | Explainer text | "Cost = input × input-price + output × output-price + cache-read × 10% of input-price + cache-write × 125% of input-price (5-min TTL)." |
+| 7 | Anthropic link | Text "Anthropic pricing ↗" linking to `https://www.anthropic.com/pricing`, `target="_blank"` |
+| 8 | Empty state | When summary.total_cost == 0: "No cost data for this view." replaces the stacked bar |
+| 9 | Filter responsiveness | Setting date/project/model filters updates the bar + legend + scope line |
+
+#### 13.7.14 Top 5 Most Expensive Sessions widget (P7.5)
+
+| # | Check | Expected |
+|---|-------|----------|
+| 1 | Section visible | "Top 5 Most Expensive Sessions" heading renders only when the API returns at least one row |
+| 2 | Columns | Date, Project, Model, Cost, `% from cache-read` |
+| 3 | Sort | Rows sorted by Cost DESC (matches API ordering) |
+| 4 | Cost formatting | `$X.XX` via `Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })` |
+| 5 | % from cache-read column | `XX.X%` — 1 decimal place, in [0, 100] |
+| 6 | Row click | Navigates to the conversations tab and opens the referenced session (via `onNavigateToConversation(project, conversation_id)`) |
+| 7 | Filter responsiveness | Re-fetches with `limit=5` + the current dashboard filters |
+
+#### 13.7.15 MetadataPane Cost Attribution (P7.5)
+
+| # | Check | Expected |
+|---|-------|----------|
+| 1 | Triggered context | Renders only when `convViewData.session_id` is truthy |
+| 2 | Loading state | "Loading cost breakdown…" message while the fetch is pending |
+| 3 | Error state | "Could not load cost breakdown." when the fetch rejects |
+| 4 | Buckets | 4 rows: Input, Output, Cache read, Cache write — each `$X.XX` |
+| 5 | Total row | `Total` row at the bottom sums the 4 buckets |
+| 6 | Token note | "N estimated tokens total" shown below the rows only when `metrics.estimated_tokens > 0` |
+| 7 | Formatting | Every USD value goes through `Intl.NumberFormat` — `Number.isFinite` guard falls back to `$0.00` for non-numeric inputs |
 
 ### 13.7b UI — search mode badges (P5)
 

@@ -246,7 +246,7 @@ def _rrf_merge(
     max_score = max(scores.values(), default=1.0)
     if max_score > 0:
         return {sid: s / max_score for sid, s in scores.items()}
-    return scores
+    return scores  # pragma: no cover — unreachable: RRF contributions are always > 0
 
 
 def _recency_boost(started_at: datetime | None, now: datetime) -> float:

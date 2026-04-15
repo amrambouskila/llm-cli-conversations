@@ -1,4 +1,3 @@
-import React from "react";
 import { formatNumber, formatTimestamp } from "../utils";
 import { ToolBreakdownChart, TokenCostEstimate } from "./Charts";
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { formatNumber, formatTimestamp } from "../utils";
 
 function groupByConversation(segments) {
@@ -27,7 +27,6 @@ export default function RequestList({
   onHideConversation,
   onRestoreConversation,
   showProject,
-  showHidden,
   dateFrom,
   dateTo,
   summaryTitles,

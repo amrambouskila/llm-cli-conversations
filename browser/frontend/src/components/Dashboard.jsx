@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -21,10 +21,24 @@ import {
   fetchDashboardSessionTypes,
   fetchDashboardHeatmap,
   fetchDashboardAnomalies,
+  fetchDashboardTopExpensiveSessions,
   fetchSearchFilters,
 } from "../api";
-import { formatNumber, formatTimestamp } from "../utils";
+import { formatNumber } from "../utils";
 import Heatmap from "./Heatmap";
+
+const COST_BUCKETS = [
+  { key: "input_usd", label: "Input", color: "#89b4fa" },
+  { key: "output_usd", label: "Output", color: "#a6e3a1" },
+  { key: "cache_read_usd", label: "Cache read", color: "#f9e2af" },
+  { key: "cache_create_usd", label: "Cache write", color: "#cba6f7" },
+];
+
+function formatUsd(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "$0.00";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
 
 ChartJS.register(
   CategoryScale,
@@ -55,6 +69,17 @@ const FAMILY_LABELS = {
   other: "Other",
 };
 
+// Chart palettes — module-level so useMemo deps stay stable across renders
+const STACK_COLORS = [
+  "#89b4fa", "#a6e3a1", "#f9e2af", "#cba6f7", "#f38ba8",
+  "#89dceb", "#fab387", "#94e2d5", "#f5c2e7", "#74c7ec",
+  "#b4befe", "#eba0ac",
+];
+
+const SESSION_TYPE_COLORS = [
+  "#89b4fa", "#a6e3a1", "#f9e2af", "#cba6f7", "#f38ba8", "#89dceb", "#fab387",
+];
+
 export default function Dashboard({ provider, onNavigateToConversation }) {
   const [filters, setFilters] = useState({
     provider: provider,
@@ -74,6 +99,7 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
   const [sessionTypes, setSessionTypes] = useState([]);
   const [heatmapData, setHeatmapData] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
+  const [topExpensive, setTopExpensive] = useState([]);
 
   const [costGroupBy, setCostGroupBy] = useState("week");
   const [costStackBy, setCostStackBy] = useState("project");
@@ -134,6 +160,7 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
     fetchDashboardSessionTypes(params).then(setSessionTypes).catch(console.error);
     fetchDashboardHeatmap(params).then(setHeatmapData).catch(console.error);
     fetchDashboardAnomalies(params).then(setAnomalies).catch(console.error);
+    fetchDashboardTopExpensiveSessions({ ...params, limit: 5 }).then(setTopExpensive).catch(console.error);
   }, [apiParams, costGroupBy, costStackBy]);
 
 
@@ -186,17 +213,6 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
       asc: s.key === key ? !s.asc : false,
     }));
   }, []);
-
-  // Chart palette
-  const STACK_COLORS = [
-    "#89b4fa", "#a6e3a1", "#f9e2af", "#cba6f7", "#f38ba8",
-    "#89dceb", "#fab387", "#94e2d5", "#f5c2e7", "#74c7ec",
-    "#b4befe", "#eba0ac",
-  ];
-
-  const SESSION_TYPE_COLORS = [
-    "#89b4fa", "#a6e3a1", "#f9e2af", "#cba6f7", "#f38ba8", "#89dceb", "#fab387",
-  ];
 
   // --- Chart.js configurations ---
 
@@ -310,7 +326,18 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
           label: (ctx) => `$${ctx.parsed.x.toFixed(2)}`,
           afterLabel: (ctx) => {
             const p = projectBreakdown[ctx.dataIndex];
-            return p ? `${p.session_count} sessions, avg $${p.avg_cost_per_session.toFixed(2)}/session` : "";
+            if (!p) return "";
+            const lines = [
+              `${p.session_count} sessions, avg $${p.avg_cost_per_session.toFixed(2)}/session`,
+            ];
+            if (p.cost_breakdown) {
+              const cb = p.cost_breakdown;
+              lines.push(
+                `  input ${formatUsd(cb.input_usd)} · output ${formatUsd(cb.output_usd)}`,
+                `  cache-read ${formatUsd(cb.cache_read_usd)} · cache-write ${formatUsd(cb.cache_create_usd)}`,
+              );
+            }
+            return lines;
           },
         },
       },
@@ -366,7 +393,18 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
         callbacks: {
           afterLabel: (ctx) => {
             const m = modelComparison[ctx.dataIndex];
-            return m ? `Avg tokens/session: ${formatNumber(m.avg_tokens_per_session)}` : "";
+            if (!m) return "";
+            const lines = [
+              `Avg tokens/session: ${formatNumber(m.avg_tokens_per_session)}`,
+            ];
+            if (m.cost_breakdown) {
+              const cb = m.cost_breakdown;
+              lines.push(
+                `  input ${formatUsd(cb.input_usd)} · output ${formatUsd(cb.output_usd)}`,
+                `  cache-read ${formatUsd(cb.cache_read_usd)} · cache-write ${formatUsd(cb.cache_create_usd)}`,
+              );
+            }
+            return lines;
           },
         },
       },
@@ -558,6 +596,15 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
         </div>
       )}
 
+      {/* Row 1.5: Cost breakdown — 4-way split across input / output / cache-read / cache-write */}
+      {summary?.cost_breakdown && (
+        <CostBreakdownSection
+          breakdown={summary.cost_breakdown}
+          sessionCount={summary.total_sessions}
+          filters={filters}
+        />
+      )}
+
       {/* Row 2: Cost over time */}
       <div className="dashboard-section">
         <div className="dashboard-section-header">
@@ -653,6 +700,37 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
         <Heatmap data={heatmapData} />
       </div>
 
+      {/* Top 5 most expensive sessions — the % from cache-read column is
+          the transparency payoff: it surfaces sessions dominated by cached-context
+          re-reads vs. genuine generation. */}
+      {topExpensive.length > 0 && (
+        <div className="dashboard-section">
+          <h3>Top 5 Most Expensive Sessions</h3>
+          <div className="top-expensive-table">
+            <div className="top-expensive-header">
+              <span className="tx-col-date">Date</span>
+              <span className="tx-col-project">Project</span>
+              <span className="tx-col-model">Model</span>
+              <span className="tx-col-cost">Cost</span>
+              <span className="tx-col-pct">% from cache-read</span>
+            </div>
+            {topExpensive.map((s) => (
+              <div
+                key={s.session_id}
+                className="top-expensive-row"
+                onClick={() => onNavigateToConversation && onNavigateToConversation(s.project, s.conversation_id)}
+              >
+                <span className="tx-col-date">{s.date ? new Date(s.date).toLocaleDateString() : ""}</span>
+                <span className="tx-col-project">{s.project}</span>
+                <span className="tx-col-model">{s.model || ""}</span>
+                <span className="tx-col-cost">{formatUsd(s.total_cost)}</span>
+                <span className="tx-col-pct">{s.cache_read_pct.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Anomaly table */}
       {anomalies.length > 0 && (
         <div className="dashboard-section">
@@ -686,6 +764,84 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
     </div>
   );
 }
+
+function CostBreakdownSection({ breakdown, sessionCount, filters }) {
+  const total = breakdown.total_usd || 0;
+  const activeFilters = [];
+  if (filters.project) activeFilters.push(`project: ${filters.project}`);
+  if (filters.model) activeFilters.push(`model: ${filters.model}`);
+  if (filters.date_from || filters.date_to) {
+    activeFilters.push(
+      `date: ${filters.date_from || "…"} → ${filters.date_to || "…"}`
+    );
+  }
+  const scopeLabel = activeFilters.length
+    ? activeFilters.join(" · ")
+    : "all time";
+
+  return (
+    <div className="dashboard-section cost-breakdown-section">
+      <div className="cost-breakdown-header">
+        <h3>Cost Breakdown</h3>
+        <span className="cost-breakdown-scope">
+          {formatUsd(total)} across {formatNumber(sessionCount)} sessions · {scopeLabel}
+        </span>
+      </div>
+      <div className="cost-breakdown-bar">
+        {total > 0 ? (
+          COST_BUCKETS.map((b) => {
+            const value = breakdown[b.key] || 0;
+            const pct = (value / total) * 100;
+            if (pct <= 0) return null;
+            return (
+              <div
+                key={b.key}
+                className="cost-breakdown-segment"
+                style={{ flexGrow: pct, backgroundColor: b.color }}
+                title={`${b.label}: ${formatUsd(value)} (${pct.toFixed(1)}%)`}
+              >
+                {pct >= 8 && <span className="cost-breakdown-segment-label">{b.label}</span>}
+              </div>
+            );
+          })
+        ) : (
+          <div className="cost-breakdown-empty">No cost data for this view.</div>
+        )}
+      </div>
+      <div className="cost-breakdown-legend">
+        {COST_BUCKETS.map((b) => {
+          const value = breakdown[b.key] || 0;
+          const pct = total > 0 ? (value / total) * 100 : 0;
+          return (
+            <span key={b.key} className="cost-breakdown-legend-item">
+              <span
+                className="cost-breakdown-swatch"
+                style={{ backgroundColor: b.color }}
+                aria-hidden="true"
+              />
+              <span className="cost-breakdown-legend-label">{b.label}</span>
+              <span className="cost-breakdown-legend-value">
+                {formatUsd(value)} ({pct.toFixed(1)}%)
+              </span>
+            </span>
+          );
+        })}
+      </div>
+      <p className="cost-breakdown-explainer">
+        Cost = input × input-price + output × output-price + cache-read × 10% of
+        input-price + cache-write × 125% of input-price (5-min TTL).{" "}
+        <a
+          href="https://www.anthropic.com/pricing"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Anthropic pricing&nbsp;↗
+        </a>
+      </p>
+    </div>
+  );
+}
+
 
 function SummaryCard({ label, value, delta, deltaLabel, prefix = "", formatDelta }) {
   const isPositive = delta > 0;

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import * as d3 from "d3";
 
 const STORAGE_KEY = "conceptGraphSettings";
@@ -237,6 +237,9 @@ export default function ConceptGraph({ data, onConceptClick }) {
       tooltip.remove();
       cleanup();
     };
+    // dataKey is a stable string fingerprint of data; including data itself
+    // would re-mount the simulation on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKey, cleanup]);
 
   if (!data || !data.nodes || data.nodes.length === 0) return null;
@@ -297,7 +300,7 @@ function SettingsCog() {
   );
 }
 
-function makeDrag(simulation) {
+export function makeDrag(simulation) {
   return d3.drag()
     .on("start", (event, d) => {
       if (!event.active) simulation.alphaTarget(0.3).restart();

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 const CELL_SIZE = 13;
 const CELL_GAP = 2;

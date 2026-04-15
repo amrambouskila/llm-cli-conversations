@@ -2191,3 +2191,218 @@ body {
   font-weight: 600;
   color: #f38ba8;
 }
+
+/* --- Phase 7.5: Cost breakdown section + Top-5 expensive sessions ------- */
+
+.cost-breakdown-section {
+  padding: 14px 16px;
+}
+
+.cost-breakdown-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.cost-breakdown-header h3 {
+  margin: 0;
+}
+
+.cost-breakdown-scope {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.cost-breakdown-bar {
+  display: flex;
+  height: 28px;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-surface2);
+  border: 1px solid var(--border);
+}
+
+.cost-breakdown-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #11111b;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 0;
+  transition: filter 0.12s;
+}
+
+.cost-breakdown-segment:hover {
+  filter: brightness(1.1);
+  cursor: help;
+}
+
+.cost-breakdown-segment-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+}
+
+.cost-breakdown-empty {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px;
+}
+
+.cost-breakdown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.cost-breakdown-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cost-breakdown-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.cost-breakdown-legend-label {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.cost-breakdown-legend-value {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+.cost-breakdown-explainer {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.cost-breakdown-explainer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.cost-breakdown-explainer a:hover {
+  text-decoration: underline;
+}
+
+.top-expensive-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.top-expensive-header,
+.top-expensive-row {
+  display: grid;
+  grid-template-columns: 0.9fr 1.3fr 1.2fr 0.7fr 1fr;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.top-expensive-header {
+  font-weight: 700;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  background: var(--bg-surface2);
+}
+
+.top-expensive-row {
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.top-expensive-row:hover {
+  background: var(--bg-hover);
+}
+
+.top-expensive-row:last-child {
+  border-bottom: none;
+}
+
+.tx-col-cost,
+.tx-col-pct {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  font-weight: 600;
+  color: var(--accent2);
+}
+
+.tx-col-pct {
+  color: var(--text);
+}
+
+/* --- Phase 7.5: MetadataPane cost attribution --------------------------- */
+
+.cost-attribution-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cost-attribution-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cost-attribution-row:last-child {
+  border-bottom: none;
+}
+
+.cost-attribution-label {
+  color: var(--text-dim);
+}
+
+.cost-attribution-value {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  color: var(--text);
+}
+
+.cost-attribution-total {
+  font-weight: 700;
+}
+
+.cost-attribution-total .cost-attribution-value {
+  color: var(--accent2);
+}
+
+.cost-attribution-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cost-attribution-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 0;
+}

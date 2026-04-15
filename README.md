@@ -1,6 +1,10 @@
 # LLM CLI Conversation Export & Browser
 
-Export LLM CLI conversations from `~/.claude/projects/` to Markdown, then browse them in a Dockerized three-pane UI powered by FastAPI + React.
+[![CI](https://github.com/amrambouskila/llm-cli-conversation-export/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/amrambouskila/llm-cli-conversation-export/actions/workflows/ci.yml)
+![coverage-backend](https://img.shields.io/badge/backend_coverage-100%25-brightgreen)
+![coverage-frontend](https://img.shields.io/badge/frontend_lines-100%25-brightgreen)
+
+Personal observability + recall platform for Claude/Codex CLI conversations — exports raw JSONL to Markdown, loads it into Postgres with hybrid semantic + keyword search, and renders a three-pane browser + KPI dashboard + knowledge graph, all in one Docker stack.
 
 ## Prerequisites
 
@@ -105,69 +109,86 @@ llm-cli-conversation-export/
 │   └── summaries/                     # Cached AI-generated summaries
 └── browser/
     ├── backend/
-    │   ├── app.py                     # FastAPI application
-    │   ├── parser.py                  # Markdown parser + data models
-    │   └── requirements.txt           # Python deps (fastapi, uvicorn)
+    │   ├── app.py                     # FastAPI application (lifespan, SPA serving)
+    │   ├── db.py                      # SQLAlchemy async engine + FastAPI DI providers
+    │   ├── models.py                  # SQLAlchemy 2.0 declarative models
+    │   ├── schemas.py                 # Pydantic v2 request/response models
+    │   ├── parser.py, load.py, embed.py, import_graph.py, graph_extract.py, …
+    │   ├── routes/                    # APIRouters: projects, segments, conversations, stats, summaries, visibility, dashboard
+    │   ├── services/                  # SearchService, SessionService, DashboardService, GraphService, ProjectService, StatsService, SummaryService + _filter_scope
+    │   ├── repositories/              # SessionRepository, SegmentRepository, ToolCallRepository, SessionTopicRepository, ConceptRepository
+    │   ├── tests/                     # 751 pytest tests — services/, repositories/, test_app_lifespan.py, test_load*.py, test_api_*.py, etc.
+    │   ├── requirements.txt           # runtime deps (fastapi, sqlalchemy, asyncpg, pgvector, onnxruntime, tokenizers)
+    │   └── requirements-dev.txt       # pytest, pytest-asyncio, pytest-cov, testcontainers, httpx, ruff
     └── frontend/
-        ├── package.json               # React + Vite
+        ├── package.json               # React 19 + Vite 6 + Chart.js + d3
         ├── vite.config.js             # Dev proxy to FastAPI
+        ├── vitest.config.js           # Per-file coverage thresholds (100% lines enforced)
+        ├── eslint.config.js           # ESLint v9 flat config (react-hooks enforced)
         ├── index.html                 # Entry point
         └── src/
             ├── main.jsx
-            ├── App.jsx                # Main app with state management
-            ├── App.css                # All styles (dark theme)
-            ├── api.js                 # API client functions
+            ├── App.jsx                # Integration shell (post-7.3 decomposed)
+            ├── App.css                # All styles (dark + light theme)
+            ├── api.js                 # Fetch wrapper per endpoint
             ├── utils.js               # Formatting + markdown renderer
-            └── components/
-                ├── ProjectList.jsx    # Left pane (project list + date filtering)
-                ├── RequestList.jsx    # Middle pane (segments + date filtering)
-                ├── ContentViewer.jsx  # Right pane (markdown + summary)
-                ├── SummaryPanel.jsx   # AI summary display + polling
-                ├── MetadataPanel.jsx  # Segment metadata section
-                └── Charts.jsx         # Cost estimates, sparklines, tool breakdown
+            ├── components/            # Header, SearchBar, FilterBar, ProjectsPane, RequestsPane, ContentPane, MetadataPane, ConversationsTab, Dashboard, KnowledgeGraph, ConceptGraph, Heatmap, Charts, SearchResults, FilterChips, ProjectList, RequestList, ContentViewer, SummaryPanel, MetadataPanel
+            ├── hooks/                 # useBackendReady, useProviders, useTheme, useSummaryTitles, useKeyboardShortcuts, useResizeHandles, useProjectSelection, useSearch, useHideRestore, useCostBreakdown
+            └── __tests__/             # 736 vitest tests mirroring components/ + hooks/
 ```
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                Docker Container                  │
-│                                                  │
-│  ┌──────────────────────────────────────────┐   │
-│  │  FastAPI (uvicorn)                        │   │
-│  │                                           │   │
-│  │  /api/providers           → available providers  │
-│  │  /api/projects            → project list + stats │
-│  │  /api/projects/:name      → segment list        │
-│  │  /api/projects/:n/conv/:c → full conversation   │
-│  │  /api/segments/:id        → full content        │
-│  │  /api/segments/:id/export → raw md for download │
-│  │  /api/search?q=           → search results      │
-│  │  /api/stats               → global stats        │
-│  │  /api/summary/*           → AI summary CRUD     │
-│  │  /api/hide/* /restore/*   → soft-delete mgmt    │
-│  │  POST /api/update         → sync + re-index     │
-│  │  /*                       → React SPA           │
-│  └──────────┬───────────────────────────────┘   │
-│             │ reads                              │
-│  ┌──────────▼───────────────────────────────┐   │
-│  │  parser.py                                │   │
-│  │  Splits .md files on >>>USER_REQUEST<<<   │   │
-│  │  Extracts timestamps, metrics, previews   │   │
-│  └──────────┬───────────────────────────────┘   │
-│             │ reads (mounted read-write)          │
-│  ┌──────────▼───────────────────────────────┐   │
-│  │  /data/markdown/*.md                      │   │
-│  └──────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[Claude CLI JSONL<br/>~/.claude/projects] --> B[convert_*.py]
+    C[Codex sessions<br/>~/.codex/sessions] --> B
+    B --> D[markdown/ + markdown_codex/]
+    D --> E[parser.py + jsonl_reader.py]
+    E --> F[load.py<br/>upserts sessions/segments/tools/topics]
+    F --> G[(Postgres 16<br/>pgvector + pg_trgm)]
+    F --> H[embed.py<br/>all-MiniLM-L6-v2 ONNX]
+    H --> G
+    D --> I[graph_extract.py<br/>claude -p + graphifyy]
+    I --> J[graphify-out/graph.json]
+    J --> K[import_graph.py]
+    K --> G
+
+    G --> L[FastAPI app.py<br/>lifespan: init_db + startup_load + recompute_session_costs]
+    L --> M[routes/*.py<br/>thin Depends shells]
+    M --> N[services/<br/>SearchService, SessionService, DashboardService,<br/>GraphService, ProjectService, StatsService, SummaryService]
+    N --> O[repositories/<br/>SessionRepository, SegmentRepository,<br/>ToolCallRepository, SessionTopicRepository, ConceptRepository]
+    O --> G
+
+    L --> P[React 19 frontend<br/>App.jsx → Header, ConversationsTab,<br/>Dashboard, KnowledgeGraph<br/>+ 10 custom hooks]
+    P --> Q[Browser at :5050]
+
+    style N fill:#e1f5ff
+    style O fill:#f3e5f5
 ```
 
 **Build pipeline (inside Dockerfile):**
 1. Node 20 stage: `npm install` + `npm run build` → produces `dist/` with static React app
-2. Python 3.13 stage: installs FastAPI + uvicorn, copies backend code + built React
+2. Python 3.13 stage: installs FastAPI + uvicorn + pgvector + onnxruntime, copies backend code + built React
 3. At runtime: FastAPI serves both the API and the React SPA from a single process
 
 **Markdown files are mounted read-write** so the Update button and watch mode can regenerate them.
+
+**Cost calculation.** Per-session cost uses the 4-way formula `input × price + output × price + cache_read × 10% of input-price + cache_creation × 125% of input-price` (the `CACHE_WRITE_PREMIUM_5M = 1.25` in `load.py` applies Anthropic's 5-minute-TTL rate). Dashboard totals and `MetadataPane` per-session attribution both derive from the same pure function, so they stay consistent. Historical rows are re-scored on every app startup via `recompute_session_costs()`. See `docs/CONVERSATIONS_MASTER_PLAN.md` §5 for the full rationale.
+
+## Testing
+
+```bash
+# Backend (containerized — needs Docker)
+docker run --rm -v "$(pwd)/browser/backend:/app" -v /var/run/docker.sock:/var/run/docker.sock -w /app \
+  -e TESTCONTAINERS_RYUK_DISABLED=true -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+  python:3.13-slim bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1 gcc docker.io > /dev/null 2>&1 && pip install -q -r requirements.txt -r requirements-dev.txt && ruff check . && pytest --cov --cov-fail-under=100"
+
+# Frontend
+cd browser/frontend && npm ci && npm run lint && npm run test:coverage && npm run build
+```
+
+CI (`.github/workflows/ci.yml`) runs the same commands plus a multi-stage Docker build verification. Backend enforces `--cov-fail-under=100`. Frontend enforces per-file thresholds in `vitest.config.js` — every module at 100% lines, most at 100% branches + functions, with the remaining hard-to-reach inline JSX wrappers and Chart.js option callbacks held at their measured posture.
 
 ## How the Browser Works
 

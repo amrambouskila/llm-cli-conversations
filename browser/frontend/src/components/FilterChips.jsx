@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const FILTER_PREFIXES = [
   { label: "project", prefix: "project:", placeholder: "project name" },
@@ -118,7 +118,7 @@ export default function FilterChips({ filterOptions, searchQuery, onQueryChange 
   );
 }
 
-function getOptionsForFilter(filter, filterOptions) {
+export function getOptionsForFilter(filter, filterOptions) {
   if (!filterOptions) return [];
   const key = filter.prefix.replace(":", "").replace(">", "");
   if (key === "project") return filterOptions.projects || [];

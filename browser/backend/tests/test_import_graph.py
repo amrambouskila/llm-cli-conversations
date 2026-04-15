@@ -115,6 +115,68 @@ async def test_import_graph_fallback_stem_match(tmp_path, seed_sessions, db_sess
     assert len(scs) >= 1
 
 
+async def test_import_graph_partial_substring_stem_fallback(tmp_path, seed_sessions, db_session, db_engine):
+    """No direct stem match → partial substring fallback (lines 115-128 of import_graph.py).
+
+    Seed sessions have source_file stem "conversations". The graph node has a different
+    stem "conversations-extended" that contains "conversations" as a substring, so the
+    first loop's `source_to_sessions.get("conversations-extended", [])` returns [] and
+    `any_source_matched` stays False. The fallback block then matches by substring.
+    """
+    graph = {
+        "nodes": [
+            {
+                "id": "nExt",
+                "label": "Extended",
+                "source_file": "/some/path/conversations-extended.md",
+            },
+        ],
+        "links": [],
+    }
+    path = tmp_path / "graph.json"
+    path.write_text(json.dumps(graph), encoding="utf-8")
+
+    await run_import_graph(str(path))
+
+    # After the substring-containment fallback, nExt must be linked to at least
+    # one seeded session whose source_file stem "conversations" is a substring of
+    # the concept's stem "conversations-extended".
+    res = await db_session.execute(select(SessionConcept).where(SessionConcept.concept_id == "nExt"))
+    scs = res.scalars().all()
+    assert len(scs) >= 1
+
+
+async def test_import_graph_skips_node_with_empty_name(tmp_path, seed_sessions, db_session, db_engine):
+    """Node with empty label AND empty name → `if not concept_name: continue` fires (line 155).
+
+    The concept itself is still inserted into the concepts table (a blank name is
+    still a string). But when merging Graphify concepts into session_topics at the
+    end, the empty name triggers the guard and that node is skipped.
+    """
+    graph = {
+        "nodes": [
+            {
+                "id": "n-blank",
+                "label": "",
+                "name": "",
+                "source_file": "/data/markdown/conversations.md",
+            },
+        ],
+        "links": [],
+    }
+    path = tmp_path / "graph.json"
+    path.write_text(json.dumps(graph), encoding="utf-8")
+
+    await run_import_graph(str(path))
+
+    # The blank-named concept was NOT merged into session_topics.
+    res = await db_session.execute(
+        select(SessionTopic).where(SessionTopic.source == "graphify")
+    )
+    topics = [t.topic for t in res.scalars().all()]
+    assert "" not in topics
+
+
 async def test_import_graph_edges_key_alternative(tmp_path, db_engine):
     """Graph with 'edges' key instead of 'links' should still compute degrees."""
     graph = {

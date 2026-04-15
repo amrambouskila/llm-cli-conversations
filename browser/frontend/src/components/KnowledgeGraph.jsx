@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   fetchDashboardGraph,
   fetchDashboardGraphStatus,
@@ -20,7 +20,7 @@ export default function KnowledgeGraph({ provider, onConceptClick }) {
     let cancelled = false;
 
     const checkGraph = async () => {
-      if (cancelled) return;
+      /* c8 ignore next 1 */ if (cancelled) return;
       try {
         const status = await fetchDashboardGraphStatus();
         if (cancelled) return;
@@ -78,6 +78,9 @@ export default function KnowledgeGraph({ provider, onConceptClick }) {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
+    // apiParams is { provider } and is recomputed each render — relying on
+    // provider directly avoids re-running the polling effect every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
   const handleRegenerate = useCallback(async () => {

@@ -82,6 +82,17 @@ async def _startup_load() -> None:
         _log(f"Startup Postgres load: {results}")
     except Exception as e:
         _log(f"Startup Postgres load failed (non-fatal): {e}")
+
+    # Recompute estimated_cost for every session using the current Phase 7.5
+    # formula (includes 1.25x cache-write premium). Idempotent; only UPDATEs
+    # rows where the stored value drifted by > $0.0001 from the recomputed one.
+    try:
+        from load import recompute_session_costs
+        checked, changed = await recompute_session_costs()
+        _log(f"Recomputed session costs: {checked} checked, {changed} adjusted by new formula")
+    except Exception as e:
+        _log(f"Session cost recompute failed (non-fatal): {e}")
+
     startup_ready = True
     _log("Backend ready — serving data")
 
@@ -222,6 +233,13 @@ async def run_export_pipeline() -> dict:
     except Exception as e:
         log_lines.append(f"Postgres load failed (non-fatal): {e}")
 
+    try:
+        from load import recompute_session_costs
+        checked, changed = await recompute_session_costs()
+        log_lines.append(f"Session costs recomputed: {checked} checked, {changed} adjusted")
+    except Exception as e:
+        log_lines.append(f"Session cost recompute failed (non-fatal): {e}")
+
     return {
         "success": True,
         "sessions": sum(pg_results.values()) if pg_results else 0,
@@ -254,20 +272,37 @@ async def api_update() -> JSONResponse:
 # ---------------------------------------------------------------------------
 # Serve React static build (production / Docker)
 # ---------------------------------------------------------------------------
-static_path = Path(STATIC_DIR)
-if static_path.exists() and (static_path / "index.html").exists():
+def _register_spa_routes(target_app: FastAPI, static_dir: Path) -> bool:
+    """Mount /assets and register the SPA catch-all route against `target_app`.
+
+    Extracted so tests can exercise the SPA serving against a temp static_dir
+    without relying on module-reload gymnastics. Returns True when the static
+    build was found and routes were registered; False otherwise.
+    """
+    if not (static_dir.exists() and (static_dir / "index.html").exists()):
+        return False
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
-    if (static_path / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
+    if (static_dir / "assets").exists():
+        target_app.mount(
+            "/assets",
+            StaticFiles(directory=str(static_dir / "assets")),
+            name="assets",
+        )
 
-    @app.get("/{full_path:path}")
+    @target_app.get("/{full_path:path}")
     def serve_spa(full_path: str) -> FileResponse:
-        file_path = static_path / full_path
+        file_path = static_dir / full_path
         # Guard against path traversal (defense-in-depth)
-        if not str(file_path.resolve()).startswith(str(static_path.resolve())):
-            return FileResponse(str(static_path / "index.html"))
+        if not str(file_path.resolve()).startswith(str(static_dir.resolve())):
+            return FileResponse(str(static_dir / "index.html"))
         if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
-        return FileResponse(str(static_path / "index.html"))
+        return FileResponse(str(static_dir / "index.html"))
+
+    return True
+
+
+static_path = Path(STATIC_DIR)
+_register_spa_routes(app, static_path)

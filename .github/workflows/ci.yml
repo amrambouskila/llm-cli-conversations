@@ -35,6 +35,26 @@ jobs:
         working-directory: browser/backend
         run: ruff check .
 
+  lint-frontend:
+    name: Lint frontend (eslint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: browser/frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: browser/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint check
+        working-directory: browser/frontend
+        run: npm run lint
+
   test-backend:
     name: Test backend (pytest + pgvector testcontainer)
     runs-on: ubuntu-latest
@@ -68,11 +88,11 @@ jobs:
 
       - name: Pytest with coverage gate
         working-directory: browser/backend
-        # 90% gate landed in Phase 7.1: services + repositories are directly
-        # traced (unlike route handlers under httpx ASGITransport), so extraction
-        # lifted total coverage from 76% to 93%. Ratchet to 95% after 7.5 cost
-        # tests land; 100% on services/ + repositories/ is the final target.
-        run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=90
+        # Phase 7.4 final: 100% coverage. Every line + branch of production
+        # code is exercised by tests. The only pragma is load.py's
+        # `if __name__ == "__main__":` bootstrap (exercised indirectly via a
+        # direct call to main()).
+        run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=100
 
       - name: Upload backend coverage
         if: always()
@@ -99,10 +119,9 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Vitest with coverage gate
-        # Per-file thresholds configured in vitest.config.js. The covered set
-        # is utils.js, SearchResults.jsx, FilterChips.jsx, MetadataPanel.jsx,
-        # App.jsx — the rest gets thresholds in Phase 7 as components are
-        # extracted and tested.
+        # Per-file thresholds configured in vitest.config.js. After Phase 7.3
+        # decomposition, every component file plus all 9 custom hooks have
+        # explicit thresholds. Total coverage ~92% lines / 93% branches.
         working-directory: browser/frontend
         run: npm run test:coverage
 

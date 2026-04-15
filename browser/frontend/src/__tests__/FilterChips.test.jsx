@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import FilterChips from "../components/FilterChips";
+import FilterChips, {
+  getOptionsForFilter,
+} from "../components/FilterChips";
 
 const filterOptions = {
   projects: ["conversations", "graphify", "ml-pipeline"],
@@ -9,6 +11,40 @@ const filterOptions = {
   tools: ["Bash", "Edit", "Read", "Grep"],
   topics: ["docker", "search", "embeddings"],
 };
+
+describe("FilterChips — getOptionsForFilter helper", () => {
+  it("returns projects for the project filter", () => {
+    const opts = getOptionsForFilter({ prefix: "project:" }, filterOptions);
+    expect(opts).toEqual(filterOptions.projects);
+  });
+
+  it("returns models for the model filter", () => {
+    const opts = getOptionsForFilter({ prefix: "model:" }, filterOptions);
+    expect(opts).toEqual(filterOptions.models);
+  });
+
+  it("returns tools for the tool filter (line 126)", () => {
+    const opts = getOptionsForFilter({ prefix: "tool:" }, filterOptions);
+    expect(opts).toEqual(filterOptions.tools);
+  });
+
+  it("returns topics for the topic filter (line 127)", () => {
+    const opts = getOptionsForFilter({ prefix: "topic:" }, filterOptions);
+    expect(opts).toEqual(filterOptions.topics);
+  });
+
+  it("returns [] when filterOptions.tools is missing (|| [] fallback)", () => {
+    expect(getOptionsForFilter({ prefix: "tool:" }, {})).toEqual([]);
+  });
+
+  it("returns [] when filterOptions.topics is missing (|| [] fallback)", () => {
+    expect(getOptionsForFilter({ prefix: "topic:" }, {})).toEqual([]);
+  });
+
+  it("returns [] when filterOptions itself is null", () => {
+    expect(getOptionsForFilter({ prefix: "project:" }, null)).toEqual([]);
+  });
+});
 
 describe("FilterChips — autocomplete chips", () => {
   it("renders all 8 filter chips by default", () => {
@@ -472,5 +508,60 @@ describe("FilterChips — graceful behavior with no filterOptions", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "project" }));
     expect(onChange).toHaveBeenCalledWith("project:");
+  });
+});
+
+// Directly tests the private options lookup — its "unknown prefix" fallback is
+// unreachable through normal render flow (only project/model/tool/topic open
+// the dropdown) but is covered here for safety-net documentation.
+describe("getOptionsForFilter (direct)", () => {
+  const filterOptions = {
+    projects: ["a", "b"],
+    models: ["m1"],
+    tools: ["t1"],
+    topics: ["k1"],
+  };
+
+  it("returns projects for the project prefix", () => {
+    expect(getOptionsForFilter({ prefix: "project:" }, filterOptions)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("returns models for the model prefix", () => {
+    expect(getOptionsForFilter({ prefix: "model:" }, filterOptions)).toEqual([
+      "m1",
+    ]);
+  });
+
+  it("returns tools for the tool prefix", () => {
+    expect(getOptionsForFilter({ prefix: "tool:" }, filterOptions)).toEqual([
+      "t1",
+    ]);
+  });
+
+  it("returns topics for the topic prefix", () => {
+    expect(getOptionsForFilter({ prefix: "topic:" }, filterOptions)).toEqual([
+      "k1",
+    ]);
+  });
+
+  it("returns [] when filterOptions is null", () => {
+    expect(getOptionsForFilter({ prefix: "project:" }, null)).toEqual([]);
+  });
+
+  it("returns [] when the matching options key is missing", () => {
+    expect(getOptionsForFilter({ prefix: "project:" }, {})).toEqual([]);
+    expect(getOptionsForFilter({ prefix: "model:" }, {})).toEqual([]);
+  });
+
+  it("returns [] for an unknown prefix (fallback branch)", () => {
+    expect(getOptionsForFilter({ prefix: "after:" }, filterOptions)).toEqual(
+      []
+    );
+    expect(getOptionsForFilter({ prefix: "cost:>" }, filterOptions)).toEqual(
+      []
+    );
   });
 });

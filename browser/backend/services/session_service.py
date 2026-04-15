@@ -89,6 +89,11 @@ class SessionService:
         seg_ids = [s.id for s in segments]
         total_tools = await self.tool_calls.count_for_segments(seg_ids)
 
+        # All segments of one conversation share a session_id (conversations and
+        # sessions are 1:1 in the data model). Expose it so the frontend can fetch
+        # the session-level cost-breakdown endpoint without an extra lookup.
+        session_id = segments[0].session_id if segments else None
+
         return {
             "conversation_id": conversation_id,
             "project_name": project_name,
@@ -101,7 +106,33 @@ class SessionService:
                 "estimated_tokens": total_chars // 4,
                 "tool_call_count": total_tools,
             },
+            "session_id": session_id,
         }
+
+    # ------------------------------------------------------------------
+    # Per-session cost breakdown
+    # ------------------------------------------------------------------
+
+    async def get_cost_breakdown(self, session_id: str) -> dict | None:
+        """Return the 4-way USD cost breakdown for a single session.
+
+        Returns None if the session does not exist. Computes from the stored
+        token columns via estimate_cost_breakdown() so the value stays in sync
+        with the dashboard aggregations (same pure function, same pricing table).
+        """
+        from load import estimate_cost_breakdown
+
+        session = await self.sessions.get(session_id)
+        if session is None:
+            return None
+        breakdown = estimate_cost_breakdown(
+            input_tokens=session.input_tokens or 0,
+            output_tokens=session.output_tokens or 0,
+            cache_read_tokens=session.cache_read_tokens or 0,
+            cache_creation_tokens=session.cache_creation_tokens or 0,
+            model=session.model,
+        )
+        return breakdown.model_dump()
 
     # ------------------------------------------------------------------
     # Related sessions (Graphify concept graph)

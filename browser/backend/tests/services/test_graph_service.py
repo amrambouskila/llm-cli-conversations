@@ -81,3 +81,29 @@ async def test_import_from_disk_with_minimal_file(db_session, tmp_path):
     (tmp_path / "graph.json").write_text(json.dumps(minimal), encoding="utf-8")
     data = await GraphService(db_session).import_from_disk()
     assert data == {"ok": True}
+
+
+async def test_status_progress_invalid_json_falls_back_to_defaults(db_session, tmp_path):
+    """Corrupt .progress file → json.JSONDecodeError caught, progress defaults used."""
+    (tmp_path / ".generate_requested").write_text("1", encoding="utf-8")
+    (tmp_path / ".progress").write_text("{not valid json", encoding="utf-8")
+    data = await GraphService(db_session).get_status()
+    assert data["status"] == "generating"
+    assert data["progress"] == {
+        "done": 0, "total": 0, "current": None, "ok": 0, "failed": 0, "model": "",
+    }
+
+
+async def test_import_from_disk_raises_returns_error(db_session, tmp_path, monkeypatch):
+    """Any exception from import_graph() is caught and surfaced as {ok: False, error: ...}."""
+    (tmp_path / "graph.json").write_text(json.dumps({"nodes": [], "links": []}), encoding="utf-8")
+
+    async def boom(path):
+        raise RuntimeError("database exploded")
+
+    import import_graph as ig
+    monkeypatch.setattr(ig, "import_graph", boom)
+
+    data = await GraphService(db_session).import_from_disk()
+    assert data["ok"] is False
+    assert "database exploded" in data["error"]

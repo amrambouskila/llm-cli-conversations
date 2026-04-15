@@ -249,6 +249,19 @@ class ConversationView(BaseModel):
     segment_count: int
     raw_markdown: str
     metrics: SegmentMetrics
+    session_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Cost breakdown (shared across dashboard + per-session responses)
+# ---------------------------------------------------------------------------
+
+class CostBreakdown(BaseModel):
+    input_usd: float
+    output_usd: float
+    cache_read_usd: float
+    cache_create_usd: float
+    total_usd: float
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +369,7 @@ class DashboardSummary(BaseModel):
     avg_cost_per_session: float
     project_count: int
     deltas: DashboardDeltas
+    cost_breakdown: CostBreakdown
 
 
 class CostOverTimePeriod(BaseModel):
@@ -368,6 +382,7 @@ class ProjectBreakdown(BaseModel):
     total_cost: float
     session_count: int
     avg_cost_per_session: float
+    cost_breakdown: CostBreakdown
 
 
 class ToolUsage(BaseModel):
@@ -382,6 +397,7 @@ class ModelBreakdown(BaseModel):
     total_sessions: int
     total_cost: float
     avg_tokens_per_session: int
+    cost_breakdown: CostBreakdown
 
 
 class SessionTypeDistribution(BaseModel):
@@ -406,6 +422,16 @@ class AnomalyRow(BaseModel):
     cost: float
     conversation_id: str | None = None
     flag: str
+
+
+class TopExpensiveSession(BaseModel):
+    session_id: str
+    project: str
+    date: str | None = None
+    model: str | None = None
+    total_cost: float
+    cache_read_pct: float
+    conversation_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

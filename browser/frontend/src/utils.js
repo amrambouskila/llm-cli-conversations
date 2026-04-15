@@ -1,3 +1,63 @@
+/**
+ * Header stats line — counts plus per-model cost estimates given an 80/20
+ * input/output token split.
+ */
+const STATS_PRICING = {
+  claude: [
+    { l: "Sonnet", i: 3, o: 15 },
+    { l: "Opus", i: 15, o: 75 },
+  ],
+  codex: [
+    { l: "GPT-4o", i: 2.5, o: 10 },
+    { l: "o3", i: 10, o: 40 },
+  ],
+};
+
+export function formatStatsText(stats, provider) {
+  if (!stats) return "";
+  const t = stats.estimated_tokens;
+  const inp = Math.round(t * 0.8);
+  const out = Math.round(t * 0.2);
+  const models = STATS_PRICING[provider] || STATS_PRICING.claude;
+  const costs = models
+    .map((m) => `${m.l} $${((inp * m.i + out * m.o) / 1e6).toFixed(2)}`)
+    .join(" | ");
+  return `${stats.total_projects} projects | ${stats.total_segments} requests | ${formatNumber(stats.total_words)} words | ${formatNumber(t)} tokens | ${costs}`;
+}
+
+/**
+ * Export the active conversation or segment markdown via copy or download.
+ * Falls back to a textarea + execCommand("copy") when the Clipboard API
+ * isn't available (some browsers, jsdom in tests).
+ */
+export async function exportMarkdown(mode, convViewData, segmentDetail) {
+  const md = convViewData?.raw_markdown || segmentDetail?.raw_markdown;
+  if (!md) return;
+  const name = convViewData
+    ? `${convViewData.project_name}_conversation_${convViewData.conversation_id.substring(0, 8)}.md`
+    : `${segmentDetail.project_name}_request_${segmentDetail.segment_index + 1}.md`;
+  if (mode === "copy") {
+    try {
+      await navigator.clipboard.writeText(md);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = md;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  } else if (mode === "download") {
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function formatNumber(n) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
@@ -32,7 +92,7 @@ const ALLOWED_TAGS = new Set([
  * Permits class attributes on allowed tags but removes all other attributes
  * (blocks event handlers like onerror, onclick, etc.).
  */
-function sanitizeHtml(html) {
+export function sanitizeHtml(html) {
   return html.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)?\/?>/g, (match, tag, attrs) => {
     const lower = tag.toLowerCase();
     if (!ALLOWED_TAGS.has(lower)) {

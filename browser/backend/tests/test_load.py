@@ -203,3 +203,347 @@ async def test_codex_markdown_dir_absent_skips_codex(md_dir, tmp_path, db_engine
     nonexistent = str(tmp_path / "does_not_exist")
     results = await load_all(str(md_dir), nonexistent, nonexistent, nonexistent)
     assert "codex" not in results
+
+
+# ---------------------------------------------------------------------------
+# _tool_family fallback — pure unit, no DB
+# ---------------------------------------------------------------------------
+
+def test_tool_family_unknown_returns_other():
+    from load import _tool_family
+    assert _tool_family("SomeUnknownTool") == "other"
+    assert _tool_family("") == "other"
+
+
+def test_tool_family_known_mappings():
+    from load import _tool_family
+    assert _tool_family("Bash") == "execution"
+    assert _tool_family("Read") == "file_ops"
+    assert _tool_family("Grep") == "search"
+    assert _tool_family("WebSearch") == "web"
+    assert _tool_family("TaskCreate") == "planning"
+
+
+# ---------------------------------------------------------------------------
+# _parse_ts — empty input + unrecognized format fallback
+# ---------------------------------------------------------------------------
+
+def test_parse_ts_empty_and_none():
+    from load import _parse_ts
+    assert _parse_ts(None) is None
+    assert _parse_ts("") is None
+
+
+def test_parse_ts_unrecognized_format_returns_none():
+    """Exhausts the format loop → returns None via final line."""
+    from load import _parse_ts
+    assert _parse_ts("not-a-real-ts") is None
+    assert _parse_ts("2026/03/15 12:00:00") is None
+
+
+def test_parse_ts_all_four_formats():
+    """Exercise each format in the tuple so every continue path fires."""
+    from load import _parse_ts
+    assert _parse_ts("2026-03-15T12:00:00.123456Z") is not None
+    assert _parse_ts("2026-03-15T12:00:00Z") is not None
+    assert _parse_ts("2026-03-15T12:00:00.123456") is not None
+    assert _parse_ts("2026-03-15T12:00:00") is not None
+
+
+# ---------------------------------------------------------------------------
+# _resolve_pricing — prefix fallback for unknown-but-family-like model names
+# ---------------------------------------------------------------------------
+
+def test_resolve_pricing_exact_match():
+    from load import _resolve_pricing
+    assert _resolve_pricing("claude-opus-4-6") == (15.00, 75.00)
+
+
+def test_resolve_pricing_prefix_fallback():
+    """Unknown exact key but shares prefix with a known model → gets that model's pricing.
+
+    "claude-opus-4-6".rsplit("-", 1)[0] = "claude-opus-4" — any input that
+    startswith("claude-opus-4") matches and inherits opus pricing.
+    """
+    from load import _resolve_pricing
+    input_p, _ = _resolve_pricing("claude-opus-4-7-preview")
+    assert input_p == 15.00
+
+
+def test_resolve_pricing_complete_unknown_defaults_to_sonnet():
+    """Non-matching model → final fallback (3.00, 15.00)."""
+    from load import _resolve_pricing
+    assert _resolve_pricing("completely-unknown-model") == (3.00, 15.00)
+    # None falls back to "openai" which is in MODEL_PRICING (codex default).
+    assert _resolve_pricing(None) == (2.50, 10.00)
+
+
+# ---------------------------------------------------------------------------
+# _group_segments_into_sessions — standalone-segment branch
+# ---------------------------------------------------------------------------
+
+_MARKDOWN_STANDALONE = """\
+# project_standalone
+
+---
+
+>>>USER_REQUEST<<<
+# User #1 \u2014 2026-03-17T10:00:00.000Z
+
+orphan request without a conversation id
+
+**Tool Call: `Bash`**
+```json
+{"command": "ls"}
+```
+"""
+
+
+async def test_standalone_segment_becomes_own_session(tmp_path, db_engine, fake_embed):
+    """A request missing `conv: \\`uuid\\`` ends up as its own session (one per segment)."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from load import load_all
+
+    md = tmp_path / "markdown"
+    md.mkdir()
+    (md / "project_standalone.md").write_text(_MARKDOWN_STANDALONE, encoding="utf-8")
+    nonexistent = str(tmp_path / "nope")
+
+    await load_all(str(md), nonexistent, nonexistent, nonexistent)
+
+    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with maker() as s:
+        rows = (await s.execute(select(Session).where(Session.project == "project_standalone"))).scalars().all()
+    assert len(rows) == 1
+    # Standalone session has NULL conversation_id
+    assert rows[0].conversation_id is None
+    assert rows[0].turn_count == 1
+
+
+# ---------------------------------------------------------------------------
+# _upsert_session summary_text truncation (line 307)
+# ---------------------------------------------------------------------------
+
+_MARKDOWN_LONG_PREVIEWS = """\
+# project_long
+
+---
+
+## Conversation `conv-long` (started 2026-03-15T12:00:00.000Z)
+
+""" + "\n".join(
+    f">>>USER_REQUEST<<<\n# User #{i} \u2014 2026-03-15T12:{i:02d}:00.000Z \u2014 conv: `conv-long`\n\n" +
+    ("very detailed content line spread out " * 20) + "\n"
+    for i in range(1, 4)
+)
+
+
+async def test_summary_text_truncated_at_500_chars(tmp_path, db_engine, fake_embed, monkeypatch):
+    """Three previews > 166 chars each → joined summary exceeds 500 → truncate fires.
+
+    `extract_preview` normally caps preview at 120 chars, so the truncation branch
+    is unreachable via natural markdown. We monkeypatch it to return a 200-char
+    string so three joined previews total 606 chars and trigger line 307's slice.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    import parser as parser_mod
+    from load import load_all
+
+    monkeypatch.setattr(parser_mod, "extract_preview", lambda *a, **k: "x" * 200)
+
+    md = tmp_path / "markdown"
+    md.mkdir()
+    (md / "project_long.md").write_text(_MARKDOWN_LONG_PREVIEWS, encoding="utf-8")
+    nonexistent = str(tmp_path / "nope")
+
+    await load_all(str(md), nonexistent, nonexistent, nonexistent)
+
+    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with maker() as s:
+        row = (await s.execute(select(Session).where(Session.id == "conv-long"))).scalar_one()
+    assert row.summary_text is not None
+    # 200*3 + 6 " | " separators = 606 → sliced to 500 exactly.
+    assert len(row.summary_text) == 500
+
+
+# ---------------------------------------------------------------------------
+# _embed_new_sessions — skip-empty-text + batch-commit branches
+# ---------------------------------------------------------------------------
+
+async def test_embed_skipped_when_session_text_is_empty(tmp_path, db_engine, monkeypatch):
+    """`if not session_text.strip(): continue` fires when build_session_text returns empty."""
+    import embed
+    from load import _embed_new_sessions
+
+    called_for: list[str] = []
+
+    def fake_embed_text(text: str) -> list[float]:
+        called_for.append(text)
+        return [0.0] * embed.EMBEDDING_DIM
+
+    # build_session_text returns empty string unconditionally → all sessions skipped.
+    # Patch `embed.build_session_text` (not `load.build_session_text`) — load does
+    # `from embed import build_session_text` inside the function, rebinding each call.
+    monkeypatch.setattr(embed, "build_session_text", lambda *a, **k: "   ")
+    monkeypatch.setattr(embed, "embed_text", fake_embed_text)
+
+    # Seed one session with NULL embedding.
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with maker() as s:
+        s.add(Session(
+            id="s-empty-text",
+            provider="claude",
+            project="proj",
+            model="claude-opus-4-6",
+            conversation_id="c-empty",
+            started_at=datetime(2026, 3, 15, tzinfo=UTC),
+            ended_at=datetime(2026, 3, 15, tzinfo=UTC) + timedelta(hours=1),
+            turn_count=1,
+            total_chars=10,
+            total_words=2,
+            source_file="x.md",
+        ))
+        await s.commit()
+
+    count = await _embed_new_sessions()
+    assert count == 0
+    assert called_for == []
+
+
+async def test_embed_commits_every_100_sessions(tmp_path, db_engine, monkeypatch):
+    """Fire the `if count % 100 == 0:` branch by seeding exactly 100 embeddable sessions."""
+    import embed
+    from load import _embed_new_sessions
+
+    monkeypatch.setattr(embed, "embed_text", lambda text: [0.01] * embed.EMBEDDING_DIM)
+
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    base = datetime(2026, 3, 15, tzinfo=UTC)
+    maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with maker() as s:
+        for i in range(100):
+            s.add(Session(
+                id=f"sb-{i:03d}",
+                provider="claude",
+                project="bulk",
+                model="claude-opus-4-6",
+                conversation_id=f"c-{i:03d}",
+                started_at=base + timedelta(minutes=i),
+                ended_at=base + timedelta(minutes=i + 1),
+                turn_count=1,
+                total_chars=100,
+                total_words=20,
+                summary_text=f"session {i}",
+                source_file="x.md",
+            ))
+        await s.commit()
+
+    count = await _embed_new_sessions()
+    assert count == 100
+
+
+# ---------------------------------------------------------------------------
+# load_all — embedding + graphify failure branches (non-fatal)
+# ---------------------------------------------------------------------------
+
+async def test_load_all_embedding_failure_non_fatal(md_dir, tmp_path, db_engine, monkeypatch):
+    """embed_text raising → outer try/except in load_all catches it (line 622-623)."""
+    import embed
+
+    def boom(text):
+        raise RuntimeError("ONNX unavailable")
+    monkeypatch.setattr(embed, "embed_text", boom)
+
+    nonexistent = str(tmp_path / "does_not_exist")
+    # Should not raise — exception is caught and logged non-fatally.
+    results = await load_all(str(md_dir), nonexistent, nonexistent, nonexistent)
+    assert results == {"claude": 2}
+
+
+async def test_run_graphify_and_import_exception_branch(tmp_path, db_engine, monkeypatch):
+    """Graphify import raising → outer try/except in _run_graphify_and_import catches (lines 644-649)."""
+    from load import _run_graphify_and_import
+
+    graphify_out = tmp_path / "graphify-out"
+    graphify_out.mkdir()
+    (graphify_out / "graph.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GRAPHIFY_OUT", str(graphify_out))
+
+    async def broken_import(_path):
+        raise RuntimeError("import exploded")
+
+    import import_graph as ig
+    monkeypatch.setattr(ig, "import_graph", broken_import)
+
+    # Should not raise — exception is caught and logged non-fatally.
+    await _run_graphify_and_import(str(tmp_path / "markdown"))
+
+
+async def test_run_graphify_and_import_success_logs_import(tmp_path, db_engine, monkeypatch):
+    """Graphify import succeeding → `_log('Graphify concept graph imported...')` runs (line 647)."""
+    from load import _run_graphify_and_import
+
+    graphify_out = tmp_path / "graphify-out"
+    graphify_out.mkdir()
+    (graphify_out / "graph.json").write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.setenv("GRAPHIFY_OUT", str(graphify_out))
+
+    called_with: list[str] = []
+
+    async def fake_import(path):
+        called_with.append(path)
+
+    import import_graph as ig
+    monkeypatch.setattr(ig, "import_graph", fake_import)
+
+    await _run_graphify_and_import(str(tmp_path / "markdown"))
+    assert called_with  # import was called → success log path fired
+
+
+# ---------------------------------------------------------------------------
+# Codex load branch (lines 606-610)
+# ---------------------------------------------------------------------------
+
+async def test_codex_markdown_dir_present_loads_codex_sessions(md_dir, tmp_path, db_engine, fake_embed):
+    """Codex markdown dir exists → load_provider('codex', ...) runs, results['codex'] present."""
+    codex_md = tmp_path / "markdown_codex"
+    codex_md.mkdir()
+    codex_file = codex_md / "codex_session.md"
+    codex_file.write_text(
+        "# codex_session\n\n---\n\n## Session `cx-1` (started 2026-03-18T10:00:00.000Z)\n\n"
+        ">>>USER_REQUEST<<<\n# User #1 \u2014 2026-03-18T10:00:00.000Z \u2014 conv: `cx-1`\n\n"
+        "first codex request\n",
+        encoding="utf-8",
+    )
+    nonexistent = str(tmp_path / "raw_missing")
+
+    results = await load_all(str(md_dir), str(codex_md), nonexistent, nonexistent)
+    assert "codex" in results
+    assert results["codex"] == 1
+
+
+# ---------------------------------------------------------------------------
+# main() CLI entry point (lines 654-677)
+# ---------------------------------------------------------------------------
+
+async def test_main_cli_runs_with_env_vars(md_dir, tmp_path, db_engine, fake_embed, monkeypatch):
+    """Call main() directly with env vars pointing at tmp_path so the CLI entry is covered."""
+    from load import main
+
+    monkeypatch.setenv("MARKDOWN_DIR", str(md_dir))
+    monkeypatch.setenv("CODEX_MARKDOWN_DIR", str(tmp_path / "nope_codex"))
+    monkeypatch.setenv("RAW_DIR", str(tmp_path / "nope_raw"))
+    monkeypatch.setenv("CODEX_SESSIONS_SRC", str(tmp_path / "nope_cs"))
+
+    # Should complete without raising. `init_db()` is idempotent so re-running
+    # inside the test's fixtured DB is safe.
+    await main()

@@ -16,6 +16,7 @@ from schemas import (
     ProjectBreakdown,
     SessionTypeDistribution,
     ToolUsage,
+    TopExpensiveSession,
 )
 from services.dashboard_service import DashboardFilters, DashboardService
 from services.graph_service import GraphService
@@ -103,6 +104,16 @@ async def dashboard_anomalies(
     service: DashboardService = Depends(get_dashboard_service),
 ) -> list[dict]:
     return await service.get_anomalies(filters)
+
+
+@router.get("/api/dashboard/top-expensive-sessions", response_model=list[TopExpensiveSession])
+async def dashboard_top_expensive_sessions(
+    limit: int = Query(5, ge=1, le=50),
+    filters: DashboardFilters = Depends(_filters),
+    service: DashboardService = Depends(get_dashboard_service),
+) -> list[dict]:
+    """Return the N most expensive sessions with per-row breakdown + cache-read pct."""
+    return await service.get_top_expensive_sessions(filters, limit=limit)
 
 
 @router.get("/api/dashboard/graph", response_model=GraphResponse)

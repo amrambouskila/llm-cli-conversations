@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { renderMarkdown, highlightHtml } from "../utils";
 import SummaryPanel from "./SummaryPanel";
 import {

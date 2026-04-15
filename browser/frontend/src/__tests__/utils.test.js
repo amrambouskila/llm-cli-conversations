@@ -1,9 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   formatNumber,
   formatTimestamp,
   renderMarkdown,
   highlightHtml,
+  sanitizeHtml,
+  formatStatsText,
+  exportMarkdown,
 } from "../utils";
 
 describe("formatNumber", () => {
@@ -202,5 +205,206 @@ describe("highlightHtml", () => {
     expect(highlightHtml("<p>HELLO world</p>", "hello")).toContain(
       "<mark>HELLO</mark>"
     );
+  });
+});
+
+// Directly tests the private sanitizer's defensive branches that renderMarkdown
+// output never reaches. Covered here for safety-net documentation.
+describe("sanitizeHtml (direct)", () => {
+  it("strips disallowed tags entirely (exercises ALLOWED_TAGS miss branch)", () => {
+    expect(sanitizeHtml("<script>x</script>")).toBe("x");
+    expect(sanitizeHtml("<iframe></iframe>")).toBe("");
+    expect(sanitizeHtml("before<div>middle</div>after")).toBe(
+      "beforemiddleafter"
+    );
+  });
+
+  it("keeps an allowed tag with no attributes unchanged", () => {
+    expect(sanitizeHtml("<p>hi</p>")).toBe("<p>hi</p>");
+    expect(sanitizeHtml("<strong>x</strong>")).toBe("<strong>x</strong>");
+  });
+
+  it("preserves the class attribute on an allowed tag", () => {
+    expect(
+      sanitizeHtml('<code class="language-js">x</code>')
+    ).toBe('<code class="language-js">x</code>');
+  });
+
+  it("strips non-class attributes on an opening tag (reduces to bare tag)", () => {
+    expect(sanitizeHtml('<p onclick="evil">x</p>')).toBe("<p>x</p>");
+    expect(sanitizeHtml('<strong data-x="1">y</strong>')).toBe(
+      "<strong>y</strong>"
+    );
+  });
+
+  it("strips non-class attributes on a closing tag", () => {
+    expect(sanitizeHtml("</p stray>")).toBe("</p>");
+  });
+
+  it("preserves self-closing <hr /> when attrs present", () => {
+    expect(sanitizeHtml("<hr />")).toBe("<hr />");
+    expect(sanitizeHtml('<hr style="color:red" />')).toBe("<hr />");
+  });
+
+  it("is a no-op when no tags are present", () => {
+    expect(sanitizeHtml("plain text")).toBe("plain text");
+  });
+});
+
+describe("formatStatsText", () => {
+  const stats = {
+    total_projects: 5,
+    total_segments: 100,
+    total_words: 50_000,
+    estimated_tokens: 12_500,
+  };
+
+  it("returns empty string when stats is null", () => {
+    expect(formatStatsText(null, "claude")).toBe("");
+  });
+
+  it("returns empty string when stats is undefined", () => {
+    expect(formatStatsText(undefined, "claude")).toBe("");
+  });
+
+  it("includes counts and Claude model costs by default", () => {
+    const out = formatStatsText(stats, "claude");
+    expect(out).toContain("5 projects");
+    expect(out).toContain("100 requests");
+    expect(out).toContain("50.0K words");
+    expect(out).toContain("12.5K tokens");
+    expect(out).toContain("Sonnet $");
+    expect(out).toContain("Opus $");
+  });
+
+  it("uses OpenAI model labels when provider is codex", () => {
+    const out = formatStatsText(stats, "codex");
+    expect(out).toContain("GPT-4o $");
+    expect(out).toContain("o3 $");
+    expect(out).not.toContain("Sonnet");
+  });
+
+  it("falls back to Claude pricing for unknown provider", () => {
+    const out = formatStatsText(stats, "unknown");
+    expect(out).toContain("Sonnet");
+  });
+});
+
+describe("exportMarkdown", () => {
+  let writeTextSpy;
+  let createObjectURLSpy;
+  let revokeObjectURLSpy;
+  let clickSpy;
+
+  beforeEach(() => {
+    writeTextSpy = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+    createObjectURLSpy = vi.fn(() => "blob:mock");
+    revokeObjectURLSpy = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: createObjectURLSpy,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: revokeObjectURLSpy,
+      configurable: true,
+    });
+    clickSpy = vi.fn();
+    HTMLAnchorElement.prototype.click = clickSpy;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("is a no-op when neither convViewData nor segmentDetail has markdown", async () => {
+    await exportMarkdown("copy", null, null);
+    expect(writeTextSpy).not.toHaveBeenCalled();
+  });
+
+  it("copy mode writes conversation markdown to clipboard", async () => {
+    await exportMarkdown(
+      "copy",
+      {
+        raw_markdown: "# Hello",
+        project_name: "alpha",
+        conversation_id: "conv12345abcdef",
+      },
+      null
+    );
+    expect(writeTextSpy).toHaveBeenCalledWith("# Hello");
+  });
+
+  it("copy mode prefers convViewData over segmentDetail", async () => {
+    await exportMarkdown(
+      "copy",
+      { raw_markdown: "conv md", project_name: "p", conversation_id: "c1abcdef" },
+      { raw_markdown: "seg md", project_name: "p", segment_index: 0 }
+    );
+    expect(writeTextSpy).toHaveBeenCalledWith("conv md");
+  });
+
+  it("copy mode falls back to segmentDetail when no convViewData", async () => {
+    await exportMarkdown("copy", null, {
+      raw_markdown: "seg md",
+      project_name: "p",
+      segment_index: 0,
+    });
+    expect(writeTextSpy).toHaveBeenCalledWith("seg md");
+  });
+
+  it("copy mode falls back to textarea+execCommand when clipboard throws", async () => {
+    writeTextSpy.mockRejectedValueOnce(new Error("no clipboard"));
+    document.execCommand = vi.fn();
+    await exportMarkdown(
+      "copy",
+      { raw_markdown: "x", project_name: "p", conversation_id: "c1abcdef" },
+      null
+    );
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
+  });
+
+  it("download mode creates an object URL and triggers click", async () => {
+    await exportMarkdown(
+      "download",
+      { raw_markdown: "x", project_name: "alpha", conversation_id: "c1abcdef" },
+      null
+    );
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:mock");
+  });
+
+  it("conversation download filename uses first 8 chars of conversation_id", async () => {
+    let downloadName;
+    HTMLAnchorElement.prototype.click = function () {
+      downloadName = this.download;
+    };
+    await exportMarkdown(
+      "download",
+      {
+        raw_markdown: "x",
+        project_name: "alpha",
+        conversation_id: "abcdefgh-rest-of-id",
+      },
+      null
+    );
+    expect(downloadName).toBe("alpha_conversation_abcdefgh.md");
+  });
+
+  it("segment download filename uses 1-indexed segment_index", async () => {
+    let downloadName;
+    HTMLAnchorElement.prototype.click = function () {
+      downloadName = this.download;
+    };
+    await exportMarkdown("download", null, {
+      raw_markdown: "x",
+      project_name: "beta",
+      segment_index: 5,
+    });
+    expect(downloadName).toBe("beta_request_6.md");
   });
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { formatNumber, formatTimestamp } from "../utils";
 import {
   ProjectSizeBar,
@@ -13,7 +13,6 @@ export default function ProjectList({
   onSelect,
   onHideProject,
   onRestoreProject,
-  showHidden,
   dateFrom,
   dateTo,
 }) {

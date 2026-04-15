@@ -281,6 +281,7 @@ async def test_graph_import_with_minimal_graph_json(seed_sessions, api_client, m
         "/api/dashboard/session-types",
         "/api/dashboard/heatmap",
         "/api/dashboard/anomalies",
+        "/api/dashboard/top-expensive-sessions",
     ],
 )
 async def test_global_filters_accepted(seed_sessions, api_client, endpoint):
@@ -304,3 +305,72 @@ async def test_global_filters_accepted(seed_sessions, api_client, endpoint):
 async def test_malformed_date_does_not_crash(seed_sessions, api_client, endpoint):
     response = await api_client.get(endpoint + "?provider=claude&date_from=not-a-date")
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# /api/dashboard/top-expensive-sessions (Phase 7.5)
+# ---------------------------------------------------------------------------
+
+async def test_top_expensive_sessions_returns_shape(seed_sessions, api_client):
+    response = await api_client.get(
+        "/api/dashboard/top-expensive-sessions?provider=claude&limit=5"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    for row in data:
+        for key in ("session_id", "project", "date", "model", "total_cost",
+                    "cache_read_pct", "conversation_id"):
+            assert key in row
+        assert 0.0 <= row["cache_read_pct"] <= 100.0
+
+
+async def test_top_expensive_sessions_respects_limit(seed_sessions, api_client):
+    response = await api_client.get(
+        "/api/dashboard/top-expensive-sessions?provider=claude&limit=2"
+    )
+    assert response.status_code == 200
+    assert len(response.json()) <= 2
+
+
+async def test_top_expensive_sessions_empty_db(api_client):
+    response = await api_client.get("/api/dashboard/top-expensive-sessions?provider=claude")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_top_expensive_sessions_limit_validation(api_client):
+    """limit is gated on [1, 50] by the route — outside the range returns 422."""
+    too_small = await api_client.get("/api/dashboard/top-expensive-sessions?limit=0")
+    assert too_small.status_code == 422
+    too_large = await api_client.get("/api/dashboard/top-expensive-sessions?limit=100")
+    assert too_large.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Cost breakdown present on existing dashboard endpoints (Phase 7.5)
+# ---------------------------------------------------------------------------
+
+async def test_summary_includes_cost_breakdown(seed_sessions, api_client):
+    data = (await api_client.get("/api/dashboard/summary?provider=claude")).json()
+    cb = data["cost_breakdown"]
+    for key in ("input_usd", "output_usd", "cache_read_usd", "cache_create_usd", "total_usd"):
+        assert key in cb
+
+
+async def test_projects_include_cost_breakdown(seed_sessions, api_client):
+    data = (await api_client.get("/api/dashboard/projects?provider=claude")).json()
+    assert data
+    for row in data:
+        assert "cost_breakdown" in row
+        for key in ("input_usd", "output_usd", "cache_read_usd", "cache_create_usd", "total_usd"):
+            assert key in row["cost_breakdown"]
+
+
+async def test_models_include_cost_breakdown(seed_sessions, api_client):
+    data = (await api_client.get("/api/dashboard/models?provider=claude")).json()
+    assert data
+    for row in data:
+        assert "cost_breakdown" in row
+        for key in ("input_usd", "output_usd", "cache_read_usd", "cache_create_usd", "total_usd"):
+            assert key in row["cost_breakdown"]

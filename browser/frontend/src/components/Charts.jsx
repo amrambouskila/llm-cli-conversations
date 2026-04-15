@@ -1,4 +1,3 @@
-import React from "react";
 import { formatNumber } from "../utils";
 
 // Muted color palette for charts
@@ -76,9 +75,10 @@ export function ConversationTimeline({ timestamps, firstTs, lastTs }) {
 }
 
 /**
- * 3. TokenCostEstimate — shows cost next to token count
- *    Provider-aware: Claude uses Sonnet/Opus pricing, Codex uses GPT-4o/o3 pricing.
- *    We assume ~80% input, ~20% output for a conversation segment.
+ * 3. TokenCostEstimate — rough per-model cost estimate from a token count.
+ *    Uses a fixed 80/20 input/output split heuristic — intentionally imprecise
+ *    and labeled as such. For accurate per-session attribution, consume
+ *    /api/sessions/{id}/cost-breakdown via useCostBreakdown (Phase 7.5).
  *
  *    Claude:  Sonnet $3/$15, Opus $15/$75 per M tokens (input/output)
  *    OpenAI:  GPT-4o $2.50/$10, o3 $10/$40 per M tokens (input/output)
@@ -103,7 +103,7 @@ export function TokenCostEstimate({ tokens, provider = "claude" }) {
 
   return (
     <div className="chart-section">
-      <div className="chart-title">Estimated Cost</div>
+      <div className="chart-title">Rough cost estimate (80/20 heuristic)</div>
       <div className="cost-grid">
         {models.map((m) => {
           const cost = (inputTokens * m.inputPerM + outputTokens * m.outputPerM) / 1_000_000;

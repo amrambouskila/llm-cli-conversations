@@ -35,6 +35,7 @@ from models import (
     ToolCall,
 )
 from parser import build_index, compute_tool_breakdown
+from schemas import CostBreakdown
 from topics import extract_topics
 
 
@@ -57,6 +58,13 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
 # Cache read tokens use 10% of input price
 CACHE_READ_DISCOUNT = 0.1
 
+# Cache write tokens are billed at 1.25× input price for the 5-minute TTL that
+# Claude Code uses by default. Anthropic's 1-hour TTL rate is 2.0×, but we do
+# not detect it — no per-turn TTL signal exists in the JSONL data we store.
+# If a future phase exposes TTL per cache_creation row, we can split the
+# cache_creation column and apply the 1h premium selectively.
+CACHE_WRITE_PREMIUM_5M = 1.25
+
 TOOL_FAMILIES: dict[str, list[str]] = {
     "file_ops": ["Read", "Edit", "Write", "Glob", "NotebookEdit"],
     "search": ["Grep", "Agent"],
@@ -73,34 +81,118 @@ def _tool_family(tool_name: str) -> str:
     return "other"
 
 
-def _estimate_cost(
+def _resolve_pricing(model: str | None) -> tuple[float, float]:
+    """Return (input_price, output_price) per 1M tokens for a model name.
+
+    Exact match first, then prefix fallback (strips trailing '-N' suffix),
+    then a final fallback to sonnet pricing ($3/$15) for unknown models.
+    """
+    pricing_key = model or "openai"
+    input_price, output_price = MODEL_PRICING.get(pricing_key, (0, 0))
+    if input_price == 0:
+        for key, prices in MODEL_PRICING.items():
+            if pricing_key.startswith(key.rsplit("-", 1)[0]):
+                input_price, output_price = prices
+                break
+        else:
+            input_price, output_price = (3.00, 15.00)
+    return input_price, output_price
+
+
+def estimate_cost_breakdown(
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    model: str | None = None,
+) -> CostBreakdown:
+    """Pure function: compute the 4-way USD cost breakdown from raw token counts.
+
+    Token args default to 0 so None values from SQL SUM() over nullable
+    columns never TypeError. cache_read is billed at CACHE_READ_DISCOUNT
+    (10%) of the input price; cache_create is billed at CACHE_WRITE_PREMIUM_5M
+    (125%) of the input price — Anthropic's 5-minute-TTL rate.
+    """
+    i = input_tokens or 0
+    o = output_tokens or 0
+    cr = cache_read_tokens or 0
+    cc = cache_creation_tokens or 0
+    input_price, output_price = _resolve_pricing(model)
+
+    input_usd = i * input_price / 1_000_000
+    output_usd = o * output_price / 1_000_000
+    cache_read_usd = cr * input_price * CACHE_READ_DISCOUNT / 1_000_000
+    cache_create_usd = cc * input_price * CACHE_WRITE_PREMIUM_5M / 1_000_000
+    total_usd = input_usd + output_usd + cache_read_usd + cache_create_usd
+
+    return CostBreakdown(
+        input_usd=round(input_usd, 4),
+        output_usd=round(output_usd, 4),
+        cache_read_usd=round(cache_read_usd, 4),
+        cache_create_usd=round(cache_create_usd, 4),
+        total_usd=round(total_usd, 4),
+    )
+
+
+def estimate_cost(
     meta: SessionMetadata | None,
     model: str | None,
     char_count: int,
 ) -> Decimal:
-    """Compute estimated cost in USD."""
-    if meta and (meta.input_tokens > 0 or meta.output_tokens > 0):
-        pricing_key = meta.model or model or "openai"
-        # Try exact match, then prefix match
-        input_price, output_price = MODEL_PRICING.get(pricing_key, (0, 0))
-        if input_price == 0:
-            for key, prices in MODEL_PRICING.items():
-                if pricing_key.startswith(key.rsplit("-", 1)[0]):
-                    input_price, output_price = prices
-                    break
-            else:
-                input_price, output_price = (3.00, 15.00)
+    """Compute estimated cost in USD for a session.
 
-        cost = (
-            meta.input_tokens * input_price / 1_000_000
-            + meta.output_tokens * output_price / 1_000_000
-            + meta.cache_read_tokens * input_price * CACHE_READ_DISCOUNT / 1_000_000
-            + meta.cache_creation_tokens * input_price / 1_000_000
+    Uses the 4-way breakdown when any token count is present; falls back
+    to a char-count heuristic (char_count // 4 tokens @ sonnet input price)
+    when metadata is missing entirely — the Codex / markdown-only path.
+    """
+    if meta and _has_any_tokens(
+        meta.input_tokens,
+        meta.output_tokens,
+        meta.cache_read_tokens,
+        meta.cache_creation_tokens,
+    ):
+        breakdown = estimate_cost_breakdown(
+            input_tokens=meta.input_tokens,
+            output_tokens=meta.output_tokens,
+            cache_read_tokens=meta.cache_read_tokens,
+            cache_creation_tokens=meta.cache_creation_tokens,
+            model=meta.model or model,
         )
-        return Decimal(str(round(cost, 4)))
+        return Decimal(str(breakdown.total_usd))
 
     # Fallback: estimate from char count
     est_tokens = char_count // 4
+    return Decimal(str(round(est_tokens * 3.00 / 1_000_000, 4)))
+
+
+def _has_any_tokens(*token_counts: int | None) -> bool:
+    """True if any token bucket is nonzero. Treats None as 0."""
+    return any((t or 0) > 0 for t in token_counts)
+
+
+def _estimate_cost_from_row(
+    model: str | None,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cache_read_tokens: int | None,
+    cache_creation_tokens: int | None,
+    total_chars: int | None,
+) -> Decimal:
+    """Same formula as estimate_cost, but input is raw columns instead of SessionMetadata.
+
+    Used by recompute_session_costs() where we read token columns directly
+    from Postgres rather than from the JSONL metadata object.
+    """
+    if _has_any_tokens(input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens):
+        breakdown = estimate_cost_breakdown(
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
+            cache_read_tokens=cache_read_tokens or 0,
+            cache_creation_tokens=cache_creation_tokens or 0,
+            model=model,
+        )
+        return Decimal(str(breakdown.total_usd))
+    est_tokens = (total_chars or 0) // 4
     return Decimal(str(round(est_tokens * 3.00 / 1_000_000, 4)))
 
 
@@ -234,7 +326,7 @@ async def _upsert_session(db: AsyncSession, session_data: dict, meta: SessionMet
         session_data.get("turn_count", 0),
     )
 
-    estimated_cost = _estimate_cost(
+    estimated_cost = estimate_cost(
         meta,
         model or model_provider,
         session_data.get("total_chars", 0),
@@ -429,6 +521,67 @@ async def _embed_new_sessions() -> int:
     return count
 
 
+async def recompute_session_costs() -> tuple[int, int]:
+    """Recompute estimated_cost for every session using the current formula.
+
+    Idempotent — safe to run on every startup. Issues UPDATE only for rows
+    whose recomputed cost differs from the stored value by more than 0.0001
+    (the precision of Numeric(10,4)). Returns (total_checked, changed_count).
+
+    Motivation: Phase 7.5 added the 1.25× cache-write premium. Pre-7.5 rows
+    were written with the old formula and need to be re-scored in place so
+    dashboard aggregations reflect the corrected values without requiring
+    a manual reload. Calling this on every startup keeps the DB consistent
+    whenever the formula changes in future.
+    """
+    async with async_session() as db:
+        result = await db.execute(
+            select(
+                Session.id,
+                Session.model,
+                Session.input_tokens,
+                Session.output_tokens,
+                Session.cache_read_tokens,
+                Session.cache_creation_tokens,
+                Session.estimated_cost,
+                Session.total_chars,
+            )
+        )
+        rows = result.all()
+
+        changed = 0
+        for (
+            sid,
+            model,
+            input_t,
+            output_t,
+            cache_r,
+            cache_c,
+            current,
+            total_chars,
+        ) in rows:
+            new_cost = _estimate_cost_from_row(
+                model=model,
+                input_tokens=input_t,
+                output_tokens=output_t,
+                cache_read_tokens=cache_r,
+                cache_creation_tokens=cache_c,
+                total_chars=total_chars,
+            )
+            if current is None or abs(float(new_cost) - float(current)) > 0.0001:
+                await db.execute(
+                    update(Session)
+                    .where(Session.id == sid)
+                    .values(estimated_cost=new_cost)
+                )
+                changed += 1
+
+        if changed:
+            await db.commit()
+
+    return (len(rows), changed)
+
+
 async def load_all(
     claude_markdown_dir: str,
     codex_markdown_dir: str,
@@ -524,5 +677,5 @@ async def main() -> None:
     _log(f"Load complete: {results}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — CLI bootstrap, exercised via main() directly
     asyncio.run(main())

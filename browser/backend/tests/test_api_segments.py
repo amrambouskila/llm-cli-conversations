@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import UTC
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # /api/projects/{p}/segments
 # ---------------------------------------------------------------------------
@@ -298,3 +300,48 @@ async def test_search_status_partial_embedding_mode(seed_sessions, api_client, d
     data = response.json()
     assert data["mode"] == "embedding"
     assert 0 < data["embedded_sessions"] < data["total_sessions"]
+
+
+# ---------------------------------------------------------------------------
+# /api/sessions/{id}/cost-breakdown (Phase 7.5)
+# ---------------------------------------------------------------------------
+
+async def test_cost_breakdown_returns_four_way_split(seed_sessions, api_client):
+    response = await api_client.get("/api/sessions/s1/cost-breakdown")
+    assert response.status_code == 200
+    data = response.json()
+    for key in ("input_usd", "output_usd", "cache_read_usd", "cache_create_usd", "total_usd"):
+        assert key in data
+        assert isinstance(data[key], float)
+
+
+async def test_cost_breakdown_404_for_unknown_session(api_client):
+    response = await api_client.get("/api/sessions/does-not-exist/cost-breakdown")
+    assert response.status_code == 404
+    assert "error" in response.json()
+
+
+async def test_cost_breakdown_values_match_formula(seed_sessions, api_client):
+    """Verify specific $ values against the Phase 7.5 formula for s1 (opus)."""
+    data = (await api_client.get("/api/sessions/s1/cost-breakdown")).json()
+    # s1: opus ($15/$75), input=10000 output=4000 cache_read=2000 cache_create=500
+    # input_usd = 10000 * 15 / 1e6 = 0.15
+    # output_usd = 4000 * 75 / 1e6 = 0.30
+    # cache_read_usd = 2000 * 15 * 0.1 / 1e6 = 0.003
+    # cache_create_usd = 500 * 15 * 1.25 / 1e6 = 0.009375
+    assert data["input_usd"] == pytest.approx(0.15, abs=0.0001)
+    assert data["output_usd"] == pytest.approx(0.30, abs=0.0001)
+    assert data["cache_read_usd"] == pytest.approx(0.003, abs=0.0001)
+    assert data["cache_create_usd"] == pytest.approx(0.0094, abs=0.0001)
+
+
+# ---------------------------------------------------------------------------
+# ConversationView.session_id (Phase 7.5 — enables frontend cost-breakdown fetch)
+# ---------------------------------------------------------------------------
+
+async def test_conversation_view_exposes_session_id(seed_sessions, api_client):
+    response = await api_client.get(
+        "/api/projects/conversations/conversation/conv-1?provider=claude"
+    )
+    assert response.status_code == 200
+    assert response.json()["session_id"] == "s1"

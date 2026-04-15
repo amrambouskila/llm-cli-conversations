@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from db import get_search_service, get_session_service
 from schemas import (
+    CostBreakdown,
     RelatedSession,
     SearchFilterValues,
     SearchStatus,
@@ -80,3 +81,15 @@ async def api_related_sessions(
 ) -> list[dict]:
     """Find sessions that share concept nodes with the given session."""
     return await service.get_related_sessions(session_id)
+
+
+@router.get("/api/sessions/{session_id}/cost-breakdown", response_model=CostBreakdown)
+async def api_session_cost_breakdown(
+    session_id: str,
+    service: SessionService = Depends(get_session_service),
+) -> dict | JSONResponse:
+    """Return the 4-way USD cost breakdown for a single session."""
+    data = await service.get_cost_breakdown(session_id)
+    if data is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return data

@@ -17,6 +17,13 @@ class SessionRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    async def get(self, session_id: str) -> Session | None:
+        """Single-session lookup by primary key."""
+        result = await self.db.execute(
+            select(Session).where(Session.id == session_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_ids(self, session_ids: list[str]) -> dict[str, Session]:
         if not session_ids:
             return {}

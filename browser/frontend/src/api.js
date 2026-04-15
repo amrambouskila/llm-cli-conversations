@@ -182,6 +182,18 @@ export async function fetchDashboardAnomalies(params = {}) {
   return request(`${BASE}/api/dashboard/anomalies?${qs}`);
 }
 
+export async function fetchDashboardTopExpensiveSessions(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request(`${BASE}/api/dashboard/top-expensive-sessions?${qs}`);
+}
+
+export async function fetchSessionCostBreakdown(sessionId, options = {}) {
+  return request(
+    `${BASE}/api/sessions/${encodeURIComponent(sessionId)}/cost-breakdown`,
+    options
+  );
+}
+
 export async function fetchDashboardGraph(params = {}) {
   const qs = new URLSearchParams(params).toString();
   return request(`${BASE}/api/dashboard/graph?${qs}`);
