@@ -1,5 +1,35 @@
 # Conversations — LLM CLI Conversation Export
 
+> **MANDATORY WORKFLOW: READ THIS ENTIRE FILE BEFORE EVERY CHANGE.** Every time. No skimming, no assuming prior-session context carries over — it does not.
+>
+> **Why:** This project spans multiple sessions and months of development. Skipping the re-read produces decisions that contradict the architecture, duplicate existing patterns, break data contracts, or introduce tech debt that compounds.
+>
+> **The workflow, every time:**
+> 1. Read this entire file in full.
+> 2. Read `docs/CONVERSATIONS_MASTER_PLAN.md` — the single source of truth for product direction, phases, and architectural decisions.
+> 3. Read `docs/status.md` — current state / what just shipped.
+> 4. Read `docs/versions.md` — recent version history.
+> 5. Read the source files you plan to modify — understand existing patterns first.
+> 6. Then implement, following the rules and contracts defined here.
+
+## 0. Critical Context
+
+**What this project is.** A personal observability platform and recall system for Claude CLI and Codex CLI usage — NOT a conversation browser. Every feature must justify itself as *faster recall OR faster pattern understanding*. If it doesn't, it's out of scope. See §12 of the master plan for the anti-bloat guardrails.
+
+**Current phase.** v2.1.1 shipped 2026-04-22. Phase 9 "Drift remediation & full coverage push" is complete on top of the Phase 0-8 v2 migration. The project is feature-complete; changes now should be either bug fixes, small quality-of-life improvements, or new phases approved against the master plan.
+
+**Project-level overrides of the global CLAUDE.md** (these are intentional deviations — do not flag them as drift):
+
+- **GitHub Actions instead of GitLab CI.** Documented in master plan §10 Phase 6.7. The project is open-source on GitHub; GitLab isn't available.
+- **npm instead of pnpm.** Documented in master plan §10 Phase 6.7. npm is the project's package manager.
+- **React + plain JavaScript instead of React + TypeScript strict.** Documented in the Tech Stack section below. The frontend is small (~4400 lines), single-user, and optimizing for typing churn vs runtime guarantees yields no measurable benefit for a tool this size.
+- **`pip` + `requirements.txt` with `>=` operators instead of `uv` with pinned deps.** Docker image builds lock transitive versions at build time; the runtime container is the reproducibility unit, not the requirements file.
+
+**Sacred contracts that must not drift without master-plan approval:**
+- The 7 Postgres tables under the `conversations` schema (`sessions`, `segments`, `tool_calls`, `session_topics`, `saved_searches`, `concepts`, `session_concepts`). Schema changes require a master-plan update.
+- The cost formula in `browser/backend/load.py::estimate_cost_breakdown` (Phase 7.5: `input + output + 0.10 × cache_read + 1.25 × cache_creation`). See master plan §5.
+- The search response shape (`SessionSearchResult` Pydantic model) — the frontend relies on it verbatim.
+
 ## What This Project Is
 
 A personal observability platform and recall system for Claude CLI and Codex CLI usage. Two pillars:

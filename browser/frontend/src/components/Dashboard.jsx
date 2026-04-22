@@ -34,10 +34,26 @@ const COST_BUCKETS = [
   { key: "cache_create_usd", label: "Cache write", color: "#cba6f7" },
 ];
 
-function formatUsd(value) {
+export function formatUsd(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "$0.00";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+/**
+ * Pure helper: comparator for sortedAnomalies's `.sort()` callback.
+ * Exported so branch tests can exercise the null-handling paths directly
+ * without driving the DOM.
+ */
+export function anomalyComparator(key, asc) {
+  return (a, b) => {
+    const va = a[key];
+    const vb = b[key];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return asc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  };
 }
 
 ChartJS.register(
@@ -196,14 +212,7 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
 
   const sortedAnomalies = useMemo(() => {
     const sorted = [...anomalies];
-    sorted.sort((a, b) => {
-      const va = a[anomalySort.key];
-      const vb = b[anomalySort.key];
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return anomalySort.asc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
-    });
+    sorted.sort(anomalyComparator(anomalySort.key, anomalySort.asc));
     return sorted;
   }, [anomalies, anomalySort]);
 
@@ -765,8 +774,12 @@ export default function Dashboard({ provider, onNavigateToConversation }) {
   );
 }
 
-function CostBreakdownSection({ breakdown, sessionCount, filters }) {
-  const total = breakdown.total_usd || 0;
+/**
+ * Pure helper: scope label for CostBreakdownSection. Exported so branch
+ * tests can exercise the `|| "…"` date-fallback branches and the
+ * "activeFilters.length" ternary without driving the full dashboard UI.
+ */
+export function buildCostBreakdownScope(filters) {
   const activeFilters = [];
   if (filters.project) activeFilters.push(`project: ${filters.project}`);
   if (filters.model) activeFilters.push(`model: ${filters.model}`);
@@ -775,9 +788,12 @@ function CostBreakdownSection({ breakdown, sessionCount, filters }) {
       `date: ${filters.date_from || "…"} → ${filters.date_to || "…"}`
     );
   }
-  const scopeLabel = activeFilters.length
-    ? activeFilters.join(" · ")
-    : "all time";
+  return activeFilters.length ? activeFilters.join(" · ") : "all time";
+}
+
+function CostBreakdownSection({ breakdown, sessionCount, filters }) {
+  const total = breakdown.total_usd || 0;
+  const scopeLabel = buildCostBreakdownScope(filters);
 
   return (
     <div className="dashboard-section cost-breakdown-section">

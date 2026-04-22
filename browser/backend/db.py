@@ -21,10 +21,10 @@ if TYPE_CHECKING:
     from services.stats_service import StatsService
     from services.summary_service import SummaryService
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://conversations:conversations@localhost:5432/conversations",
+_DEFAULT_DATABASE_URL = (
+    "postgresql+asyncpg://conversations:conversations@localhost:5432/conversations"
 )
+DATABASE_URL = os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
 
 engine = create_async_engine(DATABASE_URL, pool_size=10, max_overflow=5)
 async_session = async_sessionmaker(engine, expire_on_commit=False)

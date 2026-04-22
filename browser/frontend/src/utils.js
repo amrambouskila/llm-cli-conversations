@@ -1,3 +1,5 @@
+import DOMPurify from "isomorphic-dompurify";
+
 /**
  * Header stats line — counts plus per-model cost estimates given an 80/20
  * input/output token split.
@@ -74,10 +76,11 @@ export function formatTimestamp(ts) {
 }
 
 /**
- * Allowlisted HTML tags that renderMarkdown may produce.
- * Any tag not in this set is stripped in the final sanitization pass.
+ * Allowlisted HTML tags that renderMarkdown may produce. Passed to DOMPurify
+ * as the explicit ALLOWED_TAGS whitelist so the sanitizer accepts exactly the
+ * set our markdown renderer emits — nothing else.
  */
-const ALLOWED_TAGS = new Set([
+const ALLOWED_TAGS = [
   "h1", "h2", "h3", "h4",
   "p", "br", "hr",
   "strong", "em", "code", "pre",
@@ -85,7 +88,14 @@ const ALLOWED_TAGS = new Set([
   "blockquote",
   "a",
   "mark",
-]);
+];
+
+/**
+ * Attributes that survive sanitization. `class` is used for tool-call
+ * highlighting and syntax-highlighted code blocks; `data-wiki-slug` is used
+ * by the wiki-link click handler in ConceptWikiPane.
+ */
+const ALLOWED_ATTR = ["class", "data-wiki-slug"];
 
 /**
  * Compute the wiki article filename for a concept label. Mirrors
@@ -94,42 +104,6 @@ const ALLOWED_TAGS = new Set([
  */
 export function wikiSlug(label) {
   return label.replace(/\//g, "-").replace(/ /g, "_").replace(/:/g, "-");
-}
-
-/**
- * Strip any HTML tag whose name is not in ALLOWED_TAGS.
- * Permits the class attribute on every allowed tag and additionally permits
- * data-wiki-slug on <a> tags so the wiki-link rewrite in renderMarkdown
- * survives. All other attributes are removed (blocks onerror, onclick, etc.).
- */
-export function sanitizeHtml(html) {
-  return html.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)?\/?>/g, (match, tag, attrs) => {
-    const lower = tag.toLowerCase();
-    if (!ALLOWED_TAGS.has(lower)) {
-      return "";
-    }
-    if (attrs) {
-      const isClosing = match.startsWith("</");
-      const isSelfClosing = match.endsWith("/>");
-      // <a> opening tag: preserve class + data-wiki-slug if present.
-      if (lower === "a" && !isClosing) {
-        const classMatch = attrs.match(/\bclass="([^"]*)"/);
-        const slugMatch = attrs.match(/\bdata-wiki-slug="([^"]*)"/);
-        const parts = [];
-        if (classMatch) parts.push(`class="${classMatch[1]}"`);
-        if (slugMatch) parts.push(`data-wiki-slug="${slugMatch[1]}"`);
-        return parts.length === 0 ? "<a>" : `<a ${parts.join(" ")}>`;
-      }
-      const classMatch = attrs.match(/\bclass="([^"]*)"/);
-      if (classMatch) {
-        return match.replace(attrs, ` class="${classMatch[1]}"`);
-      }
-      if (isClosing) return `</${lower}>`;
-      if (isSelfClosing) return `<${lower} />`;
-      return `<${lower}>`;
-    }
-    return match;
-  });
 }
 
 /**
@@ -168,7 +142,7 @@ export function renderMarkdown(md) {
 
   // Wiki links — rewrite [[Label]] to clickable anchors. Operates on
   // already-escaped text so the captured label is HTML-safe; the data-wiki-slug
-  // attribute survives sanitizeHtml's allowlist for <a> tags.
+  // attribute survives DOMPurify's ALLOWED_ATTR whitelist.
   html = html.replace(/\[\[([^[\]]+)\]\]/g, (_, label) => {
     return `<a class="wiki-link" data-wiki-slug="${wikiSlug(label)}">${label}</a>`;
   });
@@ -209,10 +183,10 @@ export function renderMarkdown(md) {
     '<strong class="tool-call-header">Tool Error'
   );
 
-  // Final sanitization: strip any tag not in the allowlist
-  html = sanitizeHtml(html);
-
-  return html;
+  // Final sanitization: DOMPurify enforces the ALLOWED_TAGS + ALLOWED_ATTR
+  // whitelists. Any tag or attribute our markdown pipeline did not produce is
+  // stripped here as defense-in-depth against injection via user content.
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
 /**

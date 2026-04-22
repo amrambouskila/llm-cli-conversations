@@ -45,6 +45,56 @@ const SLIDERS = [
   { key: "labelThreshold", label: "Label Threshold", min: 0, max: 1, step: 0.05 },
 ];
 
+/**
+ * Pure helper: true when a concept label should be visible for this node.
+ * Exported so tests can exercise the `|| 0` / `>= 3` fallback branches
+ * directly without driving the d3 simulation.
+ */
+export function shouldShowLabel(node, maxDegree, threshold) {
+  return (node.degree || 0) >= maxDegree * threshold || (node.session_count || 0) >= 3;
+}
+
+/**
+ * Pure helper: HTML fragment for the concept tooltip. Exported so tests can
+ * exercise the `|| "N/A"` / `?? "N/A"` / `|| 0` fallback branches without
+ * driving a synthetic mouseenter through d3 in jsdom.
+ */
+export function buildTooltipHtml(node) {
+  return (
+    `<strong>${node.name}</strong><br/>` +
+    `Type: ${node.type || "N/A"}<br/>` +
+    `Community: ${node.community_id ?? "N/A"}<br/>` +
+    `Sessions: ${node.session_count || 0}`
+  );
+}
+
+/**
+ * Pure helper: y-coordinate for a label given its node and the radius scale.
+ * Exported so tests can exercise the `|| 1` fallback for nodes missing a
+ * `degree` without driving a simulation tick.
+ */
+export function labelY(node, sizeScale) {
+  return node.y - sizeScale(node.degree || 1) - 4;
+}
+
+/**
+ * Pure helper: collision force radius for a node. Falls back to a hard-coded
+ * 6 when `sizeScale` is null (defensive: the settings effect can fire before
+ * the data effect has populated sizeScaleRef).
+ */
+export function collisionRadius(sizeScale, degree, padding) {
+  return (sizeScale ? sizeScale(degree || 1) : 6) + padding;
+}
+
+/**
+ * Pure helper: distinct community IDs for color-scale domain. Returns an
+ * empty array when data is null so the settings effect can rebuild its
+ * color scale even before the data effect populates the simulation.
+ */
+export function collectCommunityIds(data) {
+  return data ? [...new Set(data.nodes.map((n) => n.community_id))] : [];
+}
+
 export default function ConceptGraph({
   data,
   onConceptActivate,
@@ -101,20 +151,20 @@ export default function ConceptGraph({
     sim.force("center").strength(s.centerStrength);
     sim.force("charge").strength(s.chargeStrength).distanceMax(s.chargeDistanceMax);
     sim.force("link").strength(s.linkStrength).distance(s.linkDistance);
-    sim.force("collision").radius((d) => (sizeScaleRef.current ? sizeScaleRef.current(d.degree || 1) : 6) + s.collisionPadding);
+    sim.force("collision").radius((d) => collisionRadius(sizeScaleRef.current, d.degree, s.collisionPadding));
 
     // Update node colors
     const scheme = COLOR_SCHEMES[s.colorScheme] || COLOR_SCHEMES.tableau10;
-    const communityIds = data ? [...new Set(data.nodes.map((n) => n.community_id))] : [];
+    const communityIds = collectCommunityIds(data);
     const colorScale = d3.scaleOrdinal(scheme).domain(communityIds);
     d3.select(svgRef.current).selectAll(".concept-node").attr("fill", (d) => colorScale(d.community_id));
 
     // Update label visibility
     if (data) {
       const maxDegree = Math.max(1, ...data.nodes.map((n) => n.degree || 1));
-      d3.select(svgRef.current).selectAll(".concept-label").attr("display", (d) => {
-        return (d.degree || 0) >= maxDegree * s.labelThreshold || (d.session_count || 0) >= 3 ? null : "none";
-      });
+      d3.select(svgRef.current).selectAll(".concept-label").attr("display", (d) =>
+        shouldShowLabel(d, maxDegree, s.labelThreshold) ? null : "none"
+      );
     }
 
     sim.alpha(0.3).restart();
@@ -207,9 +257,7 @@ export default function ConceptGraph({
       .join("text")
       .attr("class", "concept-label")
       .text((d) => d.name)
-      .attr("display", (d) => {
-        return (d.degree || 0) >= maxDegree * s.labelThreshold || (d.session_count || 0) >= 3 ? null : "none";
-      });
+      .attr("display", (d) => (shouldShowLabel(d, maxDegree, s.labelThreshold) ? null : "none"));
 
     const tooltip = d3.select(container)
       .append("div")
@@ -220,12 +268,7 @@ export default function ConceptGraph({
       .on("mouseenter", (event, d) => {
         tooltip
           .style("opacity", 1)
-          .html(
-            `<strong>${d.name}</strong><br/>` +
-            `Type: ${d.type || "N/A"}<br/>` +
-            `Community: ${d.community_id ?? "N/A"}<br/>` +
-            `Sessions: ${d.session_count || 0}`
-          )
+          .html(buildTooltipHtml(d))
           .style("left", `${event.offsetX + 12}px`)
           .style("top", `${event.offsetY - 12}px`);
       })
@@ -246,7 +289,7 @@ export default function ConceptGraph({
 
       label
         .attr("x", (d) => d.x)
-        .attr("y", (d) => d.y - sizeScale(d.degree || 1) - 4);
+        .attr("y", (d) => labelY(d, sizeScale));
     });
 
     return () => {

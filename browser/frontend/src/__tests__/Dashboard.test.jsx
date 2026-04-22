@@ -1183,3 +1183,150 @@ describe("Dashboard — group-by controls", () => {
     });
   });
 });
+
+describe("Dashboard — branch/function gap closers", () => {
+  it("clicking the same project bar twice toggles the filter off (line 200 true branch)", async () => {
+    setupMocks({
+      projects: [
+        { project: "proj-a", total_cost: 10, session_count: 3 },
+        { project: "proj-b", total_cost: 5, session_count: 1 },
+      ],
+    });
+    render(<Dashboard provider="claude" />);
+    await waitFor(() => expect(chartCalls.Bar.length).toBeGreaterThan(0));
+    // First project chart Bar call captures the onClick. Invoke onClick twice
+    // with the same element index — second call triggers the `f.project ===
+    // project ? "" : project` toggle-off branch.
+    const projectBar = chartCalls.Bar[0];
+    projectBar.options.onClick({}, [{ index: 0 }]);
+    projectBar.options.onClick({}, [{ index: 0 }]);
+    await waitFor(() => {
+      // After the two toggle clicks, fetchDashboardProjects should have
+      // been called at least 3 times (initial + 2 filter changes).
+      expect(fetchDashboardProjects.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("clicking the same model bar twice toggles the filter off (line 204 true branch)", async () => {
+    setupMocks({
+      models: [
+        { model: "opus", total_cost: 50, total_sessions: 5, avg_tokens_per_session: 10 },
+        { model: "sonnet", total_cost: 10, total_sessions: 2, avg_tokens_per_session: 5 },
+      ],
+    });
+    render(<Dashboard provider="claude" />);
+    await waitFor(() =>
+      expect(
+        chartCalls.Bar.some(
+          (b) =>
+            b.data.labels.includes("opus") || b.data.labels.includes("sonnet")
+        )
+      ).toBe(true)
+    );
+    const modelBar = chartCalls.Bar.find(
+      (b) => b.data.labels.includes("opus") || b.data.labels.includes("sonnet")
+    );
+    modelBar.options.onClick({}, [{ index: 0 }]);
+    modelBar.options.onClick({}, [{ index: 0 }]);
+    await waitFor(() => {
+      expect(fetchDashboardModels.mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("costOverTime with a stack missing for some period falls back to 0 (line 266)", async () => {
+    setupMocks({
+      costOverTime: [
+        { period: "2026-W01", stacks: { "proj-a": 5 } },
+        { period: "2026-W02", stacks: { "proj-b": 3 } },
+      ],
+    });
+    render(<Dashboard provider="claude" />);
+    await waitFor(() => expect(chartCalls.Line.length).toBeGreaterThan(0));
+    const line = chartCalls.Line.at(-1);
+    // proj-a dataset for period 2026-W02 should fall back to 0
+    const projA = line.data.datasets.find((d) => d.label === "proj-a");
+    expect(projA.data).toEqual([5, 0]);
+    const projB = line.data.datasets.find((d) => d.label === "proj-b");
+    expect(projB.data).toEqual([0, 3]);
+  });
+
+  it("model entry with missing model field renders label 'unknown' (line 370)", async () => {
+    setupMocks({
+      models: [
+        { model: null, total_cost: 7, total_sessions: 2 },
+      ],
+    });
+    render(<Dashboard provider="claude" />);
+    await waitFor(() => expect(chartCalls.Bar.length).toBeGreaterThan(0));
+    const modelBar = chartCalls.Bar.find((b) => b.data.labels.includes("unknown"));
+    expect(modelBar).toBeDefined();
+  });
+
+  it("filterOptions without projects/models arrays falls back to [] (lines 540/550)", async () => {
+    setupMocks({
+      // Omit projects and models to hit the `filterOptions.projects || []`
+      // and `filterOptions.models || []` fallbacks.
+      filters: { topics: [] },
+    });
+    const { container } = render(<Dashboard provider="claude" />);
+    await waitFor(() => expect(fetchSearchFilters).toHaveBeenCalled());
+    // Both select dropdowns should still render with only the default
+    // "All Projects" / "All Models" options.
+    await waitFor(() =>
+      expect(container.querySelectorAll(".dashboard-filter-select").length).toBe(2)
+    );
+  });
+
+  it("clicking the Date anomaly header sorts by date (line 750 onClick)", async () => {
+    setupMocks({
+      anomalies: [
+        { session_id: "s1", project: "p", date: "2026-01-01", turns: 5, tokens: 100, cost: 1.0, conversation_id: "c1", flag: "high" },
+        { session_id: "s2", project: "p", date: "2026-02-01", turns: 3, tokens: 50, cost: 2.0, conversation_id: "c2", flag: "high" },
+      ],
+    });
+    const { container } = render(<Dashboard provider="claude" />);
+    await waitFor(() =>
+      expect(container.querySelector(".dashboard-anomaly-table")).not.toBeNull()
+    );
+    const dateHeader = container.querySelector(".anomaly-col-date");
+    expect(dateHeader).not.toBeNull();
+    await userEvent.click(dateHeader);
+    // No throw + table still rendered = onClick wrapper executed
+    expect(container.querySelector(".dashboard-anomaly-table")).not.toBeNull();
+  });
+
+  it("clicking the Turns anomaly header sorts by turns (line 752 onClick)", async () => {
+    setupMocks({
+      anomalies: [
+        { session_id: "s1", project: "p", date: "2026-01-01", turns: 5, tokens: 100, cost: 1.0, conversation_id: "c1", flag: "high" },
+        { session_id: "s2", project: "p", date: "2026-02-01", turns: 3, tokens: 50, cost: 2.0, conversation_id: "c2", flag: "high" },
+      ],
+    });
+    const { container } = render(<Dashboard provider="claude" />);
+    await waitFor(() =>
+      expect(container.querySelector(".dashboard-anomaly-table")).not.toBeNull()
+    );
+    await userEvent.click(container.querySelector(".anomaly-col-turns"));
+    expect(container.querySelector(".dashboard-anomaly-table")).not.toBeNull();
+  });
+
+  it("clicking the Project anomaly header sorts by project (line 749 onClick)", async () => {
+    setupMocks({
+      anomalies: [
+        { session_id: "s1", project: "alpha", date: "2026-01-01", turns: 5, tokens: 100, cost: 1.0, conversation_id: "c1", flag: "high" },
+        { session_id: "s2", project: "beta", date: "2026-02-01", turns: 3, tokens: 50, cost: 2.0, conversation_id: "c2", flag: "high" },
+      ],
+    });
+    const { container } = render(<Dashboard provider="claude" />);
+    await waitFor(() =>
+      expect(container.querySelector(".dashboard-anomaly-table")).not.toBeNull()
+    );
+    const projectHeaderQueries = container.querySelectorAll(".anomaly-col-project");
+    // First matching span is the header (declared before row spans).
+    await userEvent.click(projectHeaderQueries[0]);
+    // After click, the rows still render and are sorted by project asc.
+    const rows = container.querySelectorAll(".dashboard-anomaly-row");
+    expect(rows.length).toBe(2);
+  });
+
+});

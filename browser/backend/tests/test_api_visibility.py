@@ -1,17 +1,16 @@
 """Integration tests for hide/restore endpoints — verifies hidden_at column writes."""
 from __future__ import annotations
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+
+from models import Segment, Session
 
 
-async def _hidden_at(db_engine, table: str, where_sql: str, params: dict):
+async def _hidden_at(db_engine, model, where_clause):
     async with db_engine.connect() as conn:
-        result = await conn.execute(
-            text(f"SELECT hidden_at FROM conversations.{table} WHERE {where_sql} LIMIT 1"),
-            params,
-        )
+        result = await conn.execute(select(model.hidden_at).where(where_clause).limit(1))
         row = result.first()
-    return row.hidden_at if row else None
+    return row[0] if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -24,14 +23,14 @@ async def test_hide_segment_sets_hidden_at(seed_sessions, api_client, db_engine)
     body = response.json()
     assert body["ok"] is True
     assert "hidden" in body
-    assert await _hidden_at(db_engine, "segments", "id = :id", {"id": "seg-1a"}) is not None
+    assert await _hidden_at(db_engine, Segment, Segment.id == "seg-1a") is not None
 
 
 async def test_restore_segment_clears_hidden_at(seed_sessions, api_client, db_engine):
     await api_client.post("/api/hide/segment/seg-1a")
     response = await api_client.post("/api/restore/segment/seg-1a")
     assert response.status_code == 200
-    assert await _hidden_at(db_engine, "segments", "id = :id", {"id": "seg-1a"}) is None
+    assert await _hidden_at(db_engine, Segment, Segment.id == "seg-1a") is None
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +41,9 @@ async def test_hide_conversation_sets_hidden_at_on_session(seed_sessions, api_cl
     response = await api_client.post("/api/hide/conversation/conversations/conv-1")
     assert response.status_code == 200
     h = await _hidden_at(
-        db_engine, "sessions",
-        "project = :p AND conversation_id = :c",
-        {"p": "conversations", "c": "conv-1"},
+        db_engine,
+        Session,
+        (Session.project == "conversations") & (Session.conversation_id == "conv-1"),
     )
     assert h is not None
 
@@ -54,9 +53,9 @@ async def test_restore_conversation_clears_hidden_at(seed_sessions, api_client, 
     response = await api_client.post("/api/restore/conversation/conversations/conv-1")
     assert response.status_code == 200
     h = await _hidden_at(
-        db_engine, "sessions",
-        "project = :p AND conversation_id = :c",
-        {"p": "conversations", "c": "conv-1"},
+        db_engine,
+        Session,
+        (Session.project == "conversations") & (Session.conversation_id == "conv-1"),
     )
     assert h is None
 

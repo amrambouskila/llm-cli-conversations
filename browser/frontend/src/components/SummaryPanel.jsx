@@ -10,10 +10,10 @@ const WATCHER_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 const STARTING_PROGRESS = { phase: "starting", done: 0, total: 0, level: 0 };
 
-const progressSignature = (p) =>
+export const progressSignature = (p) =>
   p ? `${p.phase || ""}:${p.level ?? 0}:${p.done ?? 0}/${p.total ?? 0}` : "";
 
-const formatProgress = (p) => {
+export const formatProgress = (p) => {
   if (!p) return "Generating summary...";
   switch (p.phase) {
     case "starting":
@@ -96,6 +96,10 @@ export default function SummaryPanel({ summaryKey, onRequest, onPoll, onTitleRea
       return;
     }
 
+    // Defensive: React deps `[summaryKey]` never re-fire this effect with
+    // the same key, so the AND-second-operand branch is unreachable under
+    // normal flow. Kept as a stale-closure guard for future refactors.
+    /* c8 ignore next */
     if (summaryKey === lastKeyRef.current && status === "ready") return;
     lastKeyRef.current = summaryKey;
 

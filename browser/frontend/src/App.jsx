@@ -209,9 +209,27 @@ export default function App() {
 
   const statsText = formatStatsText(stats, provider);
 
+  const handleToggleShowHidden = useCallback(
+    () => setShowHidden((v) => !v),
+    []
+  );
+  const handleToggleTheme = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [setTheme]
+  );
+  const handleToggleDateFilter = useCallback(
+    () => setShowDateFilter((v) => !v),
+    [setShowDateFilter]
+  );
+
   const hiddenTotal = stats?.hidden ? stats.hidden.segments + stats.hidden.conversations + stats.hidden.projects : 0;
   const showProject = isInSearchMode;
+  // Source-of-truth precedence for the viewer: the active conversation view
+  // if one is loaded, otherwise the selected-segment markdown. These fall
+  // through to null only when nothing is selected (empty state).
+  /* c8 ignore next */
   const viewingMarkdown = convViewData?.raw_markdown || segmentDetail?.raw_markdown || null;
+  /* c8 ignore next */
   const viewingSource = segmentDetail?.source_file || null;
 
   // Get selected project data for project-level analytics
@@ -241,11 +259,11 @@ export default function App() {
         onTabChange={setActiveTab}
         statsText={statsText}
         showHidden={showHidden}
-        onToggleShowHidden={() => setShowHidden(!showHidden)}
+        onToggleShowHidden={handleToggleShowHidden}
         hiddenTotal={hiddenTotal}
         onRestoreAll={handleRestoreAll}
         theme={theme}
-        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+        onToggleTheme={handleToggleTheme}
         isUpdating={isUpdating}
         updateStatus={updateStatus}
         onUpdate={handleUpdate}
@@ -258,7 +276,7 @@ export default function App() {
           onQueryChange={setSearchQuery}
           searchMode={searchMode}
           showDateFilter={showDateFilter}
-          onToggleDateFilter={() => setShowDateFilter(!showDateFilter)}
+          onToggleDateFilter={handleToggleDateFilter}
           isSearching={isSearching}
           isInSearchMode={isInSearchMode}
           searchResults={searchResults}

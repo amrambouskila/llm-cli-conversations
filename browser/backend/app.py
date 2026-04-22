@@ -62,6 +62,18 @@ CODEX_MARKDOWN_DIR = os.environ.get(
     str(Path(DEFAULT_MARKDOWN_DIR).parent / "markdown_codex"),
 )
 
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5174,http://localhost:5050,http://127.0.0.1:5174"
+)
+
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    source = raw if raw is not None else _DEFAULT_CORS_ORIGINS
+    return [origin.strip() for origin in source.split(",") if origin.strip()]
+
+
+CORS_ORIGINS = _parse_cors_origins(os.environ.get("CORS_ORIGINS"))
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -111,7 +123,7 @@ app = FastAPI(title="LLM Conversation Browser", version="1.0.0", lifespan=lifesp
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174", "http://localhost:5050", "http://127.0.0.1:5174"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
