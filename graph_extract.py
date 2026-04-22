@@ -250,10 +250,19 @@ GOD_NODE_COUNT = 15
 
 
 def _derive_god_nodes(G) -> list[dict]:  # noqa: ANN001 — networkx.Graph avoids module-level import cost
-    """Top-N highest-degree nodes shaped for graphify.wiki.to_wiki."""
+    """Top-N highest-degree nodes shaped for graphify.wiki.to_wiki.
+
+    Emits both `edges` (graphifyy ≤0.4.8) and `degree` (graphifyy ≥0.4.9) so the payload
+    works across observed upstream version drift without pinning.
+    """
     top_ids = sorted(G.nodes, key=lambda n: G.degree(n), reverse=True)[:GOD_NODE_COUNT]
     return [
-        {"id": nid, "label": G.nodes[nid].get("label", nid), "edges": G.degree(nid)}
+        {
+            "id": nid,
+            "label": G.nodes[nid].get("label", nid),
+            "edges": G.degree(nid),
+            "degree": G.degree(nid),
+        }
         for nid in top_ids
     ]
 

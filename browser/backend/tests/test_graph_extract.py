@@ -87,9 +87,13 @@ def test_derive_god_nodes_returns_top_by_degree():
 
     god = graph_extract._derive_god_nodes(G)
     assert len(god) == graph_extract.GOD_NODE_COUNT == 15
-    assert god[0] == {"id": "hub", "label": "Hub", "edges": 20}
+    assert god[0]["id"] == "hub"
+    assert god[0]["label"] == "Hub"
+    assert god[0]["edges"] == 20
+    assert god[0]["degree"] == 20
     for entry in god[1:]:
         assert entry["edges"] == 1
+        assert entry["degree"] == 1
 
 
 def test_derive_god_nodes_label_fallback_to_id():
