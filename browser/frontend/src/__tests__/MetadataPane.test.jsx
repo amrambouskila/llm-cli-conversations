@@ -348,8 +348,10 @@ describe("MetadataPane — project metadata", () => {
       total_usd: 0.3124,
     });
     render(<MetadataPane {...defaultProps({ convViewData })} />);
+    // Wait for the data state (Input label only appears once the breakdown
+    // resolves — "Cost Attribution" is shared with the loading state).
     await waitFor(() =>
-      expect(screen.getByText("Cost Attribution")).toBeInTheDocument()
+      expect(screen.getByText("Input")).toBeInTheDocument()
     );
     // The first bucket rendered $0.00 instead of crashing → line 14 guard fired.
     expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
