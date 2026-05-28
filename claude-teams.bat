@@ -1,0 +1,3 @@
+@echo off
+set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+claude %*
