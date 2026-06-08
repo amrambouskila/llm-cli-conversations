@@ -87,10 +87,11 @@ class GraphService:
     def _wiki_slug(label: str) -> str:
         """Replicate graphify.wiki._safe_filename exactly.
 
-        Three literal substitutions; locked by the parity test in
+        Three literal substitutions, then graphify's blank-name fallback to
+        "unnamed" when the result is empty. Locked by the parity test in
         tests/services/test_graph_service.py.
         """
-        return label.replace("/", "-").replace(" ", "_").replace(":", "-")
+        return label.replace("/", "-").replace(" ", "_").replace(":", "-") or "unnamed"
 
     def _safe_wiki_path(self, slug: str) -> Path | None:
         """Return the resolved path to `wiki/{slug}.md` if it exists and
