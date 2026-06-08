@@ -7,7 +7,7 @@ set -e
 SERVICE_PREFIX="llm-cli-conversation-export"
 COMPOSE_FILE="docker-compose.yml"
 PORT="${PORT:-5050}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_PORT="${POSTGRES_PORT:-5540}"
 SUMMARY_MODEL="${SUMMARY_MODEL:-claude-sonnet-4-6}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

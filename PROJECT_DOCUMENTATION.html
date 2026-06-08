@@ -1,0 +1,2150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>llm-cli-conversations — Project Documentation</title>
+  <style>
+/* ============================================================================
+   doc.css — Shared design system for project documentation pages.
+   One source of truth for every project's PROJECT_DOCUMENTATION.html.
+   Inlined directly into this PROJECT_DOCUMENTATION.html (self-contained; no external stylesheet).
+   Do not fork per-project styles. Restyle here to restyle every project at once.
+   ============================================================================ */
+
+/* ---- Theme tokens ------------------------------------------------------- */
+:root {
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --accent-border: #c7d2fe;
+  --accent-text: #4338ca;
+
+  --bg: #ffffff;
+  --bg-alt: #f7f8fa;
+  --panel: #ffffff;
+  --panel-alt: #f3f4f6;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text: #1f2937;
+  --text-soft: #374151;
+  --muted: #6b7280;
+
+  --code-bg: #f6f8fa;
+  --code-text: #1f2937;
+  --code-border: #e5e7eb;
+
+  --fileref-bg: #eef2ff;
+  --fileref-text: #3730a3;
+  --fileref-border: #c7d2fe;
+
+  --note-bg: #eff6ff;   --note-border: #3b82f6;   --note-text: #1e40af;
+  --tip-bg: #ecfdf5;    --tip-border: #10b981;    --tip-text: #065f46;
+  --warn-bg: #fffbeb;   --warn-border: #f59e0b;   --warn-text: #92400e;
+  --key-bg: #faf5ff;    --key-border: #a855f7;    --key-text: #6b21a8;
+  --danger-bg: #fef2f2; --danger-border: #ef4444; --danger-text: #991b1b;
+
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10);
+  --shadow-lg: 0 10px 30px rgba(16,24,40,.12);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --header-h: 64px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --maxw: 980px;
+}
+
+:root[data-theme="dark"] {
+  --accent: #818cf8;
+  --accent-soft: #1e213a;
+  --accent-border: #3b3f6b;
+  --accent-text: #a5b4fc;
+
+  --bg: #0d1117;
+  --bg-alt: #0a0d12;
+  --panel: #161b22;
+  --panel-alt: #1c2230;
+  --border: #2d333b;
+  --border-strong: #3d444d;
+  --text: #e6edf3;
+  --text-soft: #c9d1d9;
+  --muted: #8b949e;
+
+  --code-bg: #161b22;
+  --code-text: #e6edf3;
+  --code-border: #30363d;
+
+  --fileref-bg: #1e213a;
+  --fileref-text: #c7d2fe;
+  --fileref-border: #3b3f6b;
+
+  --note-bg: #0d2138;   --note-border: #3b82f6;   --note-text: #93c5fd;
+  --tip-bg: #082a1e;    --tip-border: #10b981;    --tip-text: #6ee7b7;
+  --warn-bg: #2b2410;   --warn-border: #f59e0b;   --warn-text: #fcd34d;
+  --key-bg: #221033;    --key-border: #a855f7;    --key-text: #d8b4fe;
+  --danger-bg: #2c1212; --danger-border: #ef4444; --danger-text: #fca5a5;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.4);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,.5);
+}
+
+/* ---- Base --------------------------------------------------------------- */
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg-alt);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, h4 { line-height: 1.25; color: var(--text); }
+p { margin: 0 0 1rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+/* ---- Scroll progress bar ------------------------------------------------ */
+#scrollProgress {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+  background: linear-gradient(90deg, var(--accent), #ec4899);
+  z-index: 1000; transition: width .08s linear;
+}
+
+/* ---- Header ------------------------------------------------------------- */
+.doc-header {
+  position: sticky; top: 0; z-index: 900;
+  height: var(--header-h);
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0 1.25rem;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.doc-header .brand { display: flex; flex-direction: column; min-width: 0; }
+.doc-header .brand .kicker {
+  font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700;
+}
+.doc-header .brand .title {
+  font-size: 1.05rem; font-weight: 700; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 46vw;
+}
+.doc-header .spacer { flex: 1 1 auto; }
+
+.doc-search {
+  position: relative; display: flex; align-items: center;
+}
+.doc-search input {
+  width: 230px; max-width: 36vw;
+  padding: .5rem .75rem .5rem 2rem;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--panel); color: var(--text); font-size: .9rem;
+  outline: none; transition: border-color .15s, box-shadow .15s, width .2s;
+}
+.doc-search input:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); width: 280px;
+}
+.doc-search::before {
+  content: ""; position: absolute; left: .65rem; width: 14px; height: 14px; opacity: .55;
+  background: currentColor;
+  -webkit-mask: var(--icon-search) center/contain no-repeat;
+          mask: var(--icon-search) center/contain no-repeat;
+  color: var(--muted);
+}
+.search-count {
+  position: absolute; right: .6rem; font-size: .72rem; color: var(--muted);
+  pointer-events: none;
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .42rem .7rem; font-size: .82rem; font-weight: 600;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text-soft); cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s; white-space: nowrap;
+}
+.btn:hover { background: var(--panel-alt); border-color: var(--accent); color: var(--accent-text); }
+.btn .ico { width: 15px; height: 15px; background: currentColor;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center; }
+.btn-group { display: flex; gap: .4rem; }
+@media (max-width: 760px) { .btn .label { display: none; } .doc-header .title { max-width: 32vw; } }
+
+/* ---- Layout ------------------------------------------------------------- */
+.doc-layout {
+  display: grid; grid-template-columns: 290px minmax(0, 1fr);
+  align-items: start; gap: 0;
+  max-width: 1400px; margin: 0 auto;
+}
+.doc-toc {
+  position: sticky; top: var(--header-h);
+  height: calc(100vh - var(--header-h));
+  overflow-y: auto; padding: 1.25rem .75rem 3rem 1.25rem;
+  border-right: 1px solid var(--border);
+}
+.doc-toc .toc-title {
+  font-size: .7rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700; margin: 0 0 .5rem .5rem;
+}
+.doc-toc ul { list-style: none; margin: 0; padding: 0; }
+.doc-toc li { margin: 0; }
+.doc-toc a {
+  display: block; padding: .32rem .5rem; border-radius: 6px;
+  color: var(--text-soft); font-size: .86rem; line-height: 1.4;
+  border-left: 2px solid transparent;
+}
+.doc-toc a:hover { background: var(--panel-alt); text-decoration: none; }
+.doc-toc a.sub { padding-left: 1.4rem; font-size: .8rem; color: var(--muted); }
+.doc-toc a.active {
+  color: var(--accent-text); background: var(--accent-soft);
+  border-left-color: var(--accent); font-weight: 600;
+}
+.doc-toc .toc-num {
+  display: inline-block; min-width: 1.4em; color: var(--muted);
+  font-variant-numeric: tabular-nums; font-weight: 600;
+}
+.doc-toc a.active .toc-num { color: var(--accent); }
+
+.doc-content { padding: 2rem 2.5rem 6rem; min-width: 0; }
+.doc-content-inner { max-width: var(--maxw); margin: 0 auto; }
+@media (max-width: 980px) {
+  .doc-layout { grid-template-columns: 1fr; }
+  .doc-toc { display: none; }
+  .doc-content { padding: 1.25rem 1rem 4rem; }
+}
+
+/* ---- Hero (page intro) -------------------------------------------------- */
+.doc-hero { margin-bottom: 1.75rem; }
+.doc-hero h1 { font-size: 2.1rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+.doc-hero .lede { font-size: 1.12rem; color: var(--text-soft); margin: 0 0 1rem; }
+.badge-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .25rem .6rem; border-radius: 999px; font-size: .76rem; font-weight: 600;
+  background: var(--panel-alt); color: var(--text-soft); border: 1px solid var(--border);
+}
+.badge.accent { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+.badge.green  { background: var(--tip-bg); color: var(--tip-text); border-color: var(--tip-border); }
+.badge.amber  { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+.badge.purple { background: var(--key-bg); color: var(--key-text); border-color: var(--key-border); }
+
+.meta-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: .75rem; margin: 1rem 0 0;
+}
+.meta-grid .meta-item {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: .7rem .85rem;
+}
+.meta-grid .meta-k {
+  font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); font-weight: 700; margin-bottom: .15rem;
+}
+.meta-grid .meta-v { font-size: .92rem; font-weight: 600; color: var(--text); }
+
+/* ---- Sections (collapsible top level) ----------------------------------- */
+.doc-section { scroll-margin-top: calc(var(--header-h) + 12px); margin-bottom: 1.1rem; }
+.doc-section > details {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.doc-section > details[open] { box-shadow: var(--shadow-lg); }
+.doc-section > details > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: .75rem;
+  padding: 1rem 1.25rem; font-weight: 700;
+}
+.doc-section > details > summary::-webkit-details-marker { display: none; }
+.doc-section > details > summary:hover { background: var(--panel-alt); }
+.doc-section > details > summary h2 {
+  font-size: 1.2rem; margin: 0; font-weight: 700; flex: 1 1 auto;
+}
+.doc-section .sec-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.9rem; height: 1.9rem; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent-text);
+  font-size: .85rem; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.doc-section .chevron {
+  width: 18px; height: 18px; color: var(--muted); transition: transform .2s; flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: var(--icon-chevron) center/contain no-repeat;
+          mask: var(--icon-chevron) center/contain no-repeat;
+}
+.doc-section > details[open] > summary .chevron { transform: rotate(90deg); }
+.sec-body { padding: .25rem 1.5rem 1.5rem; border-top: 1px solid var(--border); }
+.sec-body > :first-child { margin-top: 1rem; }
+
+/* sub-collapsibles inside a section (per-component drilldowns) */
+details.sub {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-alt); margin: .85rem 0; overflow: hidden;
+}
+details.sub > summary {
+  list-style: none; cursor: pointer; padding: .7rem 1rem; font-weight: 600;
+  display: flex; align-items: center; gap: .55rem; font-size: .96rem;
+}
+details.sub > summary::-webkit-details-marker { display: none; }
+details.sub > summary:hover { background: var(--panel-alt); }
+details.sub > summary::before {
+  content: ""; width: 14px; height: 14px; color: var(--muted); transition: transform .2s; flex: 0 0 auto;
+  background: currentColor;
+  -webkit-mask: var(--icon-chevron) center/contain no-repeat;
+          mask: var(--icon-chevron) center/contain no-repeat;
+}
+details.sub[open] > summary::before { transform: rotate(90deg); }
+details.sub > summary .sub-tag {
+  margin-left: auto; font-family: var(--mono); font-size: .72rem; font-weight: 600;
+  color: var(--muted); background: var(--panel-alt); border: 1px solid var(--border);
+  padding: .1rem .45rem; border-radius: 6px;
+}
+.sub-body { padding: .25rem 1rem 1rem; }
+.sub-body > :first-child { margin-top: .65rem; }
+
+/* ---- File references ---------------------------------------------------- */
+code.fileref {
+  font-family: var(--mono); font-size: .82em; font-weight: 600;
+  background: var(--fileref-bg); color: var(--fileref-text);
+  border: 1px solid var(--fileref-border); border-radius: 6px;
+  padding: .08em .45em .08em 1.5em; cursor: pointer; position: relative;
+  white-space: nowrap; transition: filter .12s;
+}
+code.fileref::before {
+  content: ""; position: absolute; left: .4em; top: 50%; transform: translateY(-50%);
+  width: .85em; height: .85em; background: currentColor; opacity: .8;
+  -webkit-mask: var(--icon-file) center/contain no-repeat;
+          mask: var(--icon-file) center/contain no-repeat;
+}
+code.fileref:hover { filter: brightness(.96); text-decoration: none; }
+:root[data-theme="dark"] code.fileref:hover { filter: brightness(1.15); }
+code.fileref.copied { background: var(--tip-bg); color: var(--tip-text); border-color: var(--tip-border); }
+code.fileref.dir::before { -webkit-mask: var(--icon-folder) center/contain no-repeat; mask: var(--icon-folder) center/contain no-repeat; }
+
+.filecard {
+  display: flex; align-items: baseline; gap: .65rem; flex-wrap: wrap;
+  padding: .55rem .7rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-alt); margin: .4rem 0;
+}
+.filecard .filecard-desc { color: var(--text-soft); font-size: .92rem; }
+.filelist { display: flex; flex-direction: column; gap: .35rem; margin: .75rem 0; }
+
+/* ---- Inline code & code blocks ------------------------------------------ */
+:not(pre) > code {
+  font-family: var(--mono); font-size: .86em;
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: 5px; padding: .08em .4em; color: var(--code-text);
+}
+figure.code {
+  margin: 1rem 0; border: 1px solid var(--code-border); border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--code-bg);
+}
+figure.code figcaption {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .85rem; font-family: var(--mono); font-size: .76rem; font-weight: 600;
+  color: var(--muted); background: var(--panel-alt); border-bottom: 1px solid var(--code-border);
+}
+figure.code figcaption .lang {
+  margin-left: auto; text-transform: uppercase; letter-spacing: .06em; font-size: .68rem;
+}
+figure.code pre { margin: 0; padding: .9rem 1rem; overflow-x: auto; }
+figure.code code { font-family: var(--mono); font-size: .82rem; line-height: 1.6; color: var(--code-text); background: none; border: none; padding: 0; }
+.code-copy {
+  position: absolute; top: .4rem; right: .4rem; opacity: 0; transition: opacity .15s;
+}
+figure.code { position: relative; }
+figure.code:hover .code-copy { opacity: 1; }
+
+/* ---- Callouts ----------------------------------------------------------- */
+.callout {
+  display: grid; grid-template-columns: auto 1fr; gap: .25rem .75rem;
+  padding: .85rem 1rem; border-radius: var(--radius-sm); margin: 1rem 0;
+  border: 1px solid; border-left-width: 4px;
+}
+.callout .callout-title { font-weight: 700; font-size: .9rem; grid-column: 2; }
+.callout .callout-body { grid-column: 2; }
+.callout .callout-body > :last-child { margin-bottom: 0; }
+.callout::before {
+  content: ""; grid-row: 1 / span 2; width: 18px; height: 18px; margin-top: .15rem;
+  background: currentColor;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
+.callout.note  { background: var(--note-bg); border-color: var(--note-border); color: var(--note-text); }
+.callout.tip   { background: var(--tip-bg);  border-color: var(--tip-border);  color: var(--tip-text); }
+.callout.warn  { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
+.callout.key   { background: var(--key-bg);  border-color: var(--key-border);  color: var(--key-text); }
+.callout.danger{ background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger-text); }
+.callout.note::before  { -webkit-mask: var(--icon-info) center/contain no-repeat; mask: var(--icon-info) center/contain no-repeat; }
+.callout.tip::before   { -webkit-mask: var(--icon-bulb) center/contain no-repeat; mask: var(--icon-bulb) center/contain no-repeat; }
+.callout.warn::before  { -webkit-mask: var(--icon-warn) center/contain no-repeat; mask: var(--icon-warn) center/contain no-repeat; }
+.callout.key::before   { -webkit-mask: var(--icon-key) center/contain no-repeat; mask: var(--icon-key) center/contain no-repeat; }
+.callout.danger::before{ -webkit-mask: var(--icon-warn) center/contain no-repeat; mask: var(--icon-warn) center/contain no-repeat; }
+.callout .callout-body code { background: color-mix(in srgb, currentColor 12%, transparent); border-color: transparent; color: inherit; }
+
+/* ---- Tables ------------------------------------------------------------- */
+.table-wrap { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+table.doc-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+table.doc-table th, table.doc-table td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.doc-table thead th { background: var(--panel-alt); font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); position: sticky; top: 0; }
+table.doc-table tbody tr:last-child td { border-bottom: none; }
+table.doc-table tbody tr:hover { background: var(--bg-alt); }
+table.doc-table code { white-space: nowrap; }
+
+/* ---- Definition lists --------------------------------------------------- */
+dl.doc-dl { margin: 1rem 0; display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: .1rem 1rem; }
+dl.doc-dl dt { font-weight: 700; color: var(--text); padding: .4rem 0; border-top: 1px solid var(--border); }
+dl.doc-dl dd { margin: 0; padding: .4rem 0; color: var(--text-soft); border-top: 1px solid var(--border); }
+dl.doc-dl dt:first-of-type, dl.doc-dl dd:first-of-type { border-top: none; }
+@media (max-width: 620px) { dl.doc-dl { grid-template-columns: 1fr; } dl.doc-dl dd { padding-top: 0; border-top: none; } }
+
+/* ---- Tech-stack cards --------------------------------------------------- */
+.stack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .85rem; margin: 1rem 0; }
+.stack-card {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-alt);
+  padding: .85rem .95rem; display: flex; flex-direction: column; gap: .35rem;
+}
+.stack-card .stack-head { display: flex; align-items: baseline; gap: .5rem; }
+.stack-card .stack-name { font-weight: 700; font-size: 1rem; }
+.stack-card .stack-ver { font-family: var(--mono); font-size: .76rem; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 5px; padding: .05rem .4rem; }
+.stack-card .stack-why { font-size: .87rem; color: var(--text-soft); }
+.stack-card .stack-foot { margin-top: auto; }
+
+/* ---- Step list ---------------------------------------------------------- */
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 1rem 0; }
+ol.steps > li {
+  position: relative; padding: .15rem 0 .9rem 2.4rem; margin: 0;
+  border-left: 2px solid var(--border); margin-left: .9rem;
+}
+ol.steps > li:last-child { border-left-color: transparent; }
+ol.steps > li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: -.95rem; top: 0;
+  width: 1.8rem; height: 1.8rem; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: .85rem;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---- Pipeline / flow chips ---------------------------------------------- */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: 1rem 0; }
+.flow .node { padding: .35rem .7rem; border: 1px solid var(--accent-border); background: var(--accent-soft); color: var(--accent-text); border-radius: var(--radius-sm); font-weight: 600; font-size: .85rem; }
+.flow .arrow { color: var(--muted); font-weight: 700; }
+
+/* ---- Diagram (mermaid) -------------------------------------------------- */
+figure.diagram { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); padding: 1rem; overflow-x: auto; text-align: center; }
+figure.diagram figcaption { margin-top: .6rem; font-size: .82rem; color: var(--muted); text-align: center; }
+figure.diagram .mermaid { display: flex; justify-content: center; }
+.mermaid-fallback { display: none; }
+figure.diagram.failed .mermaid { display: none; }
+figure.diagram.failed .mermaid-fallback { display: block; text-align: left; }
+
+/* ---- Misc --------------------------------------------------------------- */
+.tag-list { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+.tag { font-size: .76rem; padding: .15rem .5rem; border-radius: 999px; background: var(--panel-alt); border: 1px solid var(--border); color: var(--text-soft); font-family: var(--mono); }
+
+.lead-in { font-size: 1rem; color: var(--text-soft); border-left: 3px solid var(--accent); padding-left: .9rem; margin: 0 0 1.25rem; }
+
+ul.clean { list-style: none; padding-left: 0; }
+ul.clean > li { position: relative; padding-left: 1.4rem; margin: .35rem 0; }
+ul.clean > li::before { content: ""; position: absolute; left: .2rem; top: .55em; width: .4rem; height: .4rem; border-radius: 50%; background: var(--accent); }
+
+.content-section h3 { margin-top: 1.5rem; font-size: 1.05rem; }
+.sec-body h3 { margin-top: 1.6rem; font-size: 1.08rem; padding-bottom: .3rem; border-bottom: 1px solid var(--border); }
+.sec-body h4 { margin-top: 1.2rem; font-size: .96rem; }
+
+mark.hl { background: #fde68a; color: #78350f; border-radius: 3px; padding: 0 .1em; }
+:root[data-theme="dark"] mark.hl { background: #92400e; color: #fde68a; }
+
+.filtered-out { display: none !important; }
+
+/* ---- Back to top -------------------------------------------------------- */
+#backTop {
+  position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 800;
+  width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border-strong);
+  background: var(--panel); color: var(--text-soft); cursor: pointer; box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .2s, transform .2s;
+}
+#backTop.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#backTop:hover { color: var(--accent-text); border-color: var(--accent); }
+#backTop .ico { width: 20px; height: 20px; background: currentColor; -webkit-mask: var(--icon-up) center/contain no-repeat; mask: var(--icon-up) center/contain no-repeat; }
+
+/* ---- Footer ------------------------------------------------------------- */
+.doc-footer {
+  border-top: 1px solid var(--border); margin-top: 2rem; padding: 1.5rem 2.5rem;
+  color: var(--muted); font-size: .84rem; max-width: 1400px; margin-left: auto; margin-right: auto;
+}
+.doc-footer code { font-size: .8em; }
+
+/* ---- Icons (data-URI masks; monochrome, themeable via currentColor) ----- */
+:root {
+  --icon-search: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>');
+  --icon-chevron: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>');
+  --icon-file: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>');
+  --icon-folder: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>');
+  --icon-info: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>');
+  --icon-bulb: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M15.09 14c.18-.79.62-1.42 1.27-2A4.5 4.5 0 1 0 7.64 12c.65.58 1.09 1.21 1.27 2"/></svg>');
+  --icon-warn: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>');
+  --icon-key: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg>');
+  --icon-up: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>');
+  --icon-expand: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></svg>');
+  --icon-collapse: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg>');
+  --icon-sun: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>');
+  --icon-moon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>');
+  --icon-print: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>');
+  --icon-copy: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>');
+}
+
+/* ---- Print -------------------------------------------------------------- */
+@media print {
+  .doc-header, .doc-toc, #backTop, #scrollProgress, .code-copy { display: none !important; }
+  .doc-layout { grid-template-columns: 1fr; }
+  .doc-content { padding: 0; }
+  .doc-section > details { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+  body { background: #fff; }
+  a { color: inherit; }
+}
+
+/* ---- Index hub (DOCUMENTATION_INDEX.html) ------------------------------- */
+.index-wrap { max-width: 1180px; margin: 0 auto; padding: 2.5rem 2rem 5rem; }
+.index-hero { margin-bottom: 2rem; }
+.index-hero h1 { font-size: 2.3rem; margin: 0 0 .5rem; letter-spacing: -.02em; }
+.index-hero .lede { font-size: 1.15rem; color: var(--text-soft); margin: 0; max-width: 70ch; }
+.index-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 1.25rem; }
+.index-stats .stat { display: flex; flex-direction: column; }
+.index-stats .stat .num { font-size: 1.7rem; font-weight: 800; color: var(--accent-text); line-height: 1; }
+.index-stats .stat .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin-top: .3rem; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 1rem; margin: 1.75rem 0 0; }
+a.index-card { text-decoration: none; color: inherit; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 1.15rem 1.25rem; display: flex; flex-direction: column; gap: .55rem; box-shadow: var(--shadow); transition: transform .12s, box-shadow .12s, border-color .12s; }
+a.index-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--accent); text-decoration: none; }
+a.index-card .ic-title { font-size: 1.12rem; font-weight: 700; color: var(--text); font-family: var(--mono); }
+a.index-card .ic-desc { font-size: .9rem; color: var(--text-soft); line-height: 1.5; flex: 1 1 auto; }
+a.index-card .ic-badges { display: flex; flex-wrap: wrap; gap: .35rem; }
+a.index-card .ic-open { margin-top: .35rem; font-size: .8rem; font-weight: 700; color: var(--accent-text); display: inline-flex; align-items: center; gap: .3rem; }
+a.index-card .ic-open::after { content: "→"; transition: transform .12s; }
+a.index-card:hover .ic-open::after { transform: translateX(3px); }
+@media (max-width: 560px) { .index-wrap { padding: 1.5rem 1rem 3rem; } .index-grid { grid-template-columns: 1fr; } }
+
+  </style>
+</head>
+<body>
+  <div id="scrollProgress"></div>
+
+  <header class="doc-header">
+    <div class="brand">
+      <span class="kicker">Project Guide</span>
+      <span class="title">llm-cli-conversations</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="doc-search">
+      <input id="docSearch" type="search" placeholder="Search this guide…" aria-label="Search documentation">
+      <span class="search-count"></span>
+    </div>
+    <div class="btn-group">
+      <button class="btn" id="expandAll" title="Expand all sections"><span class="ico" style="-webkit-mask:var(--icon-expand) center/contain no-repeat;mask:var(--icon-expand) center/contain no-repeat"></span><span class="label">Expand</span></button>
+      <button class="btn" id="collapseAll" title="Collapse all sections"><span class="ico" style="-webkit-mask:var(--icon-collapse) center/contain no-repeat;mask:var(--icon-collapse) center/contain no-repeat"></span><span class="label">Collapse</span></button>
+      <button class="btn" id="themeToggle" title="Toggle light / dark"><span class="ico"></span></button>
+      <button class="btn" id="printBtn" title="Print / Save as PDF"><span class="ico" style="-webkit-mask:var(--icon-print) center/contain no-repeat;mask:var(--icon-print) center/contain no-repeat"></span></button>
+    </div>
+  </header>
+
+  <div class="doc-layout">
+    <nav class="doc-toc" id="docToc"><div class="toc-title">Contents</div></nav>
+
+    <main class="doc-content">
+      <div class="doc-content-inner">
+
+        <section class="doc-hero">
+          <h1>llm-cli-conversations</h1>
+          <p class="lede">A personal observability + recall platform for your Claude CLI and Codex CLI sessions — it exports raw JSONL transcripts to Markdown, loads them into Postgres with hybrid semantic + keyword search, and serves a three-pane browser, KPI dashboard, and knowledge graph from a single Docker stack.</p>
+          <div class="badge-row">
+            <span class="badge accent">Full-stack tool</span>
+            <span class="badge green">v2.1.1 · feature-frozen</span>
+            <span class="badge purple">FastAPI + React 19</span>
+            <span class="badge">Postgres 16 · pgvector</span>
+            <span class="badge">Docker</span>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-item"><div class="meta-k">Stack</div><div class="meta-v">Python 3.13 · FastAPI · SQLAlchemy 2.0 async · React 19 · Vite 6</div></div>
+            <div class="meta-item"><div class="meta-k">Persistence</div><div class="meta-v">PostgreSQL 16 (pgvector + pg_trgm) · file-cached AI summaries</div></div>
+            <div class="meta-item"><div class="meta-k">Entry point</div><div class="meta-v">export_service.sh / export_service.bat</div></div>
+            <div class="meta-item"><div class="meta-k">Serves on</div><div class="meta-v">http://localhost:5050</div></div>
+            <div class="meta-item"><div class="meta-k">Status</div><div class="meta-v">Phase 9 complete · no further phases planned</div></div>
+            <div class="meta-item"><div class="meta-k">Source-of-truth version</div><div class="meta-v">browser/frontend/package.json</div></div>
+          </div>
+        </section>
+
+        <!-- ===================================================== OVERVIEW -->
+        <section class="doc-section" id="overview">
+          <details open>
+            <summary><span class="sec-num">1</span><h2>Overview — what this is &amp; why</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Not a conversation browser — a search engine and a dashboard built on top of your CLI history.</p>
+
+              <p>This project answers two questions the author keeps asking: <em>"What did I discuss with Claude/Codex about X?"</em> and <em>"Where is my LLM budget actually going?"</em> Everything in the codebase justifies itself against one of two pillars — <strong>faster recall</strong> (find a past conversation by vague memory) or <strong>faster pattern understanding</strong> (see cost, tool usage, and session-type breakdowns). Features that don't serve those pillars are explicitly out of scope; see the anti-bloat guardrails in <code class="fileref" data-path="DESIGN.md">DESIGN.md</code> §7 and <code class="fileref" data-path="docs/CONVERSATIONS_MASTER_PLAN.md">docs/CONVERSATIONS_MASTER_PLAN.md</code> §12.</p>
+
+              <p>The data pipeline is linear. Raw JSONL transcripts (Claude under <code>~/.claude/projects/</code>, Codex under <code>~/.codex/sessions/</code>) are converted to one Markdown file per project by standalone Python scripts. A FastAPI backend parses that Markdown, merges in actual token counts read from the raw JSONL, and upserts everything into Postgres — sessions, segments, tool calls, heuristic topics, session-type classification, a 384-dim semantic embedding per session, and (optionally) a Graphify concept graph. A React 19 single-page app, served by the same FastAPI process, renders three tabs: a resizable three-pane conversation browser, a KPI dashboard, and a d3 force-directed knowledge graph with an in-tab wiki.</p>
+
+              <p>It is a <strong>single-user, local-first, personal tool</strong>. It runs entirely in Docker (one app container + one Postgres container), reads your source JSONL read-only, and never modifies <code>~/.claude/projects/</code>. The only thing that needs network access is the optional AI-summary and concept-graph features, which shell out to your locally-installed <code>claude</code> CLI from a host-side watcher — no API key required.</p>
+
+              <p>The project is <strong>feature-complete and feature-frozen at v2.1.1</strong> (shipped 2026-04-22, the end of "Phase 9 — drift remediation &amp; full coverage push"). It went through nine documented migration phases (in-memory index → Postgres → search upgrade → dashboard → semantic search → testing/CI → OOP restructure → wiki integration → drift remediation). Both backend and frontend are held at 100% test coverage in CI. Future work is reactive only: bug fixes and cost-formula tweaks if Anthropic pricing changes.</p>
+
+              <div class="callout key">
+                <div class="callout-title">Key concept</div>
+                <div class="callout-body">The <strong>unit of search is the session</strong> (one conversation), not the segment (one request). Embeddings, ranking, and result cards are all session-level. This avoids "chunk spam" where the same conversation dominates results, and makes every hit directly actionable: click through to the conversation. Snippet extraction does a <em>second-pass</em> keyword search within the matched session's segments.</div>
+              </div>
+
+              <div class="callout note">
+                <div class="callout-title">Note on version drift</div>
+                <div class="callout-body">The authoritative version lives in <code class="fileref" data-path="browser/frontend/package.json">browser/frontend/package.json</code>, which currently reads <code>2.2.0</code>. The docs (<code class="fileref" data-path="docs/status.md">docs/status.md</code>, <code class="fileref" data-path="docs/versions.md">docs/versions.md</code>) describe the last <em>documented</em> release as <code>v2.1.1</code>. The numeric package field is the source of truth per the project's own versioning protocol; the doc set just hasn't been re-cut to match the latest bump.</div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== STATUS -->
+        <section class="doc-section" id="status">
+          <details>
+            <summary><span class="sec-num">2</span><h2>Status &amp; at-a-glance</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">What works today, and where the project sits on its own roadmap.</p>
+
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Aspect</th><th>State</th></tr></thead>
+                <tbody>
+                  <tr><td>Documented release</td><td><code>v2.1.1</code> (2026-04-22) — Phase 9 complete</td></tr>
+                  <tr><td>Source-of-truth version field</td><td><code>2.2.0</code> in <code class="fileref" data-path="browser/frontend/package.json">browser/frontend/package.json</code></td></tr>
+                  <tr><td>Backend test coverage</td><td>100% lines + branches + functions (CI gate <code>--cov-fail-under=100</code>)</td></tr>
+                  <tr><td>Frontend test coverage</td><td>100% lines + branches + functions (flat gate in <code class="fileref" data-path="browser/frontend/vitest.config.js">vitest.config.js</code>)</td></tr>
+                  <tr><td>CI</td><td>GitHub Actions — <code class="fileref" data-path=".github/workflows/ci.yml">.github/workflows/ci.yml</code> (lint → test → build → docker-build)</td></tr>
+                  <tr><td>Roadmap</td><td>No further phases planned. Reactive bug-fix / pricing-tweak mode.</td></tr>
+                </tbody>
+              </table></div>
+
+              <h3>What works today</h3>
+              <ul>
+                <li><strong>Export</strong> — Claude + Codex JSONL → one Markdown file per project (<code class="fileref" data-path="convert_export.py">convert_export.py</code>, <code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code>, <code class="fileref" data-path="convert_codex_sessions.py">convert_codex_sessions.py</code>).</li>
+                <li><strong>Hybrid search</strong> — tsvector keyword + pgvector semantic legs fused via Reciprocal Rank Fusion, with metadata-filter parsing (<code>project:</code>, <code>model:</code>, <code>after:</code>, <code>cost:&gt;</code>, <code>turns:&gt;</code>, …) and a relevance bar per result.</li>
+                <li><strong>KPI dashboard</strong> — summary cards, cost-over-time, project/model/tool/session-type breakdowns, activity heatmap, anomaly table, a 4-way cost breakdown, and a Top-5-most-expensive-sessions widget.</li>
+                <li><strong>Knowledge graph</strong> — d3 force-directed concept graph from Graphify, with an in-tab wiki pane (community + god-node articles, <code>[[WikiLink]]</code> navigation).</li>
+                <li><strong>Soft delete / restore</strong>, <strong>dark/light theme</strong>, <strong>AI summaries</strong> (host-side <code>claude</code> watcher), <strong>resizable panes</strong>.</li>
+              </ul>
+
+              <h3>Optional / graceful-degradation features</h3>
+              <p>Three features degrade silently when their dependency is absent — the rest of the app keeps working:</p>
+              <div class="flow"><span class="node">Embeddings</span><span class="arrow">→</span><span class="node">keyword-only fallback</span></div>
+              <div class="flow"><span class="node">Graphify graph</span><span class="arrow">→</span><span class="node">empty graph, no related-sessions</span></div>
+              <div class="flow"><span class="node">claude CLI</span><span class="arrow">→</span><span class="node">"summaries unavailable" + no graph extraction</span></div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== TECH STACK -->
+        <section class="doc-section" id="tech-stack">
+          <details>
+            <summary><span class="sec-num">3</span><h2>Tech stack</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Every language, framework, and library, with why it was chosen. Manifests: <code class="fileref" data-path="browser/backend/requirements.txt">browser/backend/requirements.txt</code> and <code class="fileref" data-path="browser/frontend/package.json">browser/frontend/package.json</code>.</p>
+
+              <div class="callout note">
+                <div class="callout-title">Deliberate deviations from the author's global defaults</div>
+                <div class="callout-body">This project intentionally overrides four global conventions, documented in <code class="fileref" data-path="CLAUDE.md">CLAUDE.md</code> §0: <strong>GitHub Actions</strong> instead of GitLab CI (open-source repo), <strong>npm</strong> instead of pnpm, <strong>React + plain JavaScript</strong> instead of TypeScript strict (small single-user frontend), and <strong>pip + <code>requirements.txt</code> with <code>&gt;=</code></strong> instead of uv with pinned deps (the Docker image is the reproducibility unit). These are not drift — they are approved choices.</div>
+              </div>
+
+              <h3 class="anchor">Backend</h3>
+              <div class="stack-grid">
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Python</span><span class="stack-ver">3.13</span></div>
+                  <div class="stack-why">Runtime. <code>from __future__ import annotations</code> at the top of every module. Built on <code>python:3.13-slim</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="Dockerfile">Dockerfile</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">FastAPI</span><span class="stack-ver">&gt;=0.115</span></div>
+                  <div class="stack-why">Async HTTP API + serves the React SPA from the same process. Routes are thin shells over a service layer.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/app.py">browser/backend/app.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">uvicorn[standard]</span><span class="stack-ver">&gt;=0.34</span></div>
+                  <div class="stack-why">ASGI server. <code>CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5050"]</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="Dockerfile">Dockerfile</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">SQLAlchemy</span><span class="stack-ver">2.0 async</span></div>
+                  <div class="stack-why">ORM + DB layer via asyncpg. Declarative models define the whole schema; created at startup, no Alembic.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/models.py">browser/backend/models.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">asyncpg</span><span class="stack-ver">&gt;=0.29</span></div>
+                  <div class="stack-why">Async Postgres driver under SQLAlchemy's <code>postgresql+asyncpg://</code> URL.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/db.py">browser/backend/db.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Pydantic</span><span class="stack-ver">&gt;=2.6</span></div>
+                  <div class="stack-why">API request/response models with <code>from_attributes=True</code>. <code>response_model=</code> on every route drives OpenAPI docs.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/schemas.py">browser/backend/schemas.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">pgvector</span><span class="stack-ver">&gt;=0.3</span></div>
+                  <div class="stack-why">Python binding matching the Postgres <code>vector</code> extension. Stores 384-dim session embeddings; HNSW index.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/models.py">browser/backend/models.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">onnxruntime</span><span class="stack-ver">&gt;=1.17</span></div>
+                  <div class="stack-why">CPU inference of <code>all-MiniLM-L6-v2</code> (ONNX). Chosen over sentence-transformers + PyTorch to avoid a 2GB image. Needs <code>libgomp1</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/embed.py">browser/backend/embed.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">tokenizers + huggingface-hub</span><span class="stack-ver">&gt;=0.19 / &gt;=0.23</span></div>
+                  <div class="stack-why">Tokenization + lazy model download (<code>tokenizer.json</code> + <code>onnx/model.onnx</code>, ~90MB, cached for the container's lifetime).</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/embed.py">browser/backend/embed.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">numpy</span><span class="stack-ver">&gt;=1.26</span></div>
+                  <div class="stack-why">Mean-pooling + L2-normalization of token embeddings in the ONNX path.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/backend/embed.py">browser/backend/embed.py</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">graphifyy</span><span class="stack-ver">(unpinned)</span></div>
+                  <div class="stack-why">Concept-graph construction + Leiden clustering + wiki generation. Optional sidecar — every feature degrades gracefully without it.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="graph_extract.py">graph_extract.py</code></div>
+                </div>
+              </div>
+
+              <h3 class="anchor">Frontend</h3>
+              <div class="stack-grid">
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">React</span><span class="stack-ver">^19.1</span></div>
+                  <div class="stack-why">Functional components + hooks. <code>App.jsx</code> is a thin integration shell after the Phase 7.3 decomposition.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/src/App.jsx">src/App.jsx</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Vite</span><span class="stack-ver">^6.3</span></div>
+                  <div class="stack-why">Dev server (port 5174, proxies <code>/api</code> to :5050) + production bundler. Output copied into the runtime image.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/vite.config.js">vite.config.js</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Chart.js + react-chartjs-2</span><span class="stack-ver">^4.4 / ^5.3</span></div>
+                  <div class="stack-why">All dashboard charts (cost-over-time, project/model/tool/session-type breakdowns).</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/src/components/Charts.jsx">src/components/Charts.jsx</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">d3</span><span class="stack-ver">^7.9</span></div>
+                  <div class="stack-why">Force-directed knowledge-graph layout. Wrapped in a React component with <code>useRef</code> + <code>useEffect</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/src/components/ConceptGraph.jsx">src/components/ConceptGraph.jsx</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">isomorphic-dompurify</span><span class="stack-ver">^3.9</span></div>
+                  <div class="stack-why">HTML sanitization for the custom Markdown renderer (replaced a hand-rolled regex sanitizer in Phase 9).</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/src/utils.js">src/utils.js</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Vitest + Testing Library</span><span class="stack-ver">^2.1 / ^16</span></div>
+                  <div class="stack-why">Unit + integration tests in jsdom. Flat 100/100/100 coverage gate.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/vitest.config.js">vitest.config.js</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">ESLint</span><span class="stack-ver">^9.39 (flat)</span></div>
+                  <div class="stack-why">react-hooks rules-of-hooks + exhaustive-deps set to <code>error</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="browser/frontend/eslint.config.js">eslint.config.js</code></div>
+                </div>
+              </div>
+
+              <h3 class="anchor">Storage &amp; deployment</h3>
+              <div class="stack-grid">
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">PostgreSQL</span><span class="stack-ver">pgvector/pgvector:pg16</span></div>
+                  <div class="stack-why">All tables under the <code>conversations</code> schema. Extensions <code>vector</code> + <code>pg_trgm</code> created on startup. Named volume <code>pgdata</code>.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="docker-compose.yml">docker-compose.yml</code></div>
+                </div>
+                <div class="stack-card">
+                  <div class="stack-head"><span class="stack-name">Docker (multi-stage)</span><span class="stack-ver">node:20-alpine → python:3.13-slim</span></div>
+                  <div class="stack-why">Stage 1 builds the React bundle; stage 2 runs FastAPI and serves the bundle. Only <code>dist/</code> copies forward — no node_modules bloat.</div>
+                  <div class="stack-foot"><code class="fileref" data-path="Dockerfile">Dockerfile</code></div>
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== ARCHITECTURE -->
+        <section class="doc-section" id="architecture">
+          <details>
+            <summary><span class="sec-num">4</span><h2>Architecture</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">A linear ingest pipeline feeds Postgres; a layered FastAPI backend reads it and serves the React SPA. Two host-side watchers (summaries, graph) call the local <code>claude</code> CLI from outside the container.</p>
+
+              <h3 class="anchor">End-to-end data flow</h3>
+              <figure class="diagram">
+                <div class="mermaid">
+graph TD
+    A[Claude JSONL<br/>~/.claude/projects] --> B[convert_claude_jsonl_to_md.py]
+    C[Codex JSONL<br/>~/.codex/sessions] --> D[convert_codex_sessions.py]
+    B --> E[markdown/*.md]
+    D --> F[markdown_codex/*.md]
+    E --> G[parser.py]
+    F --> G
+    E --> H[jsonl_reader.py]
+    H --> I[load.py]
+    G --> I
+    I --> K[(Postgres 16<br/>pgvector + pg_trgm)]
+    I --> L[embed.py<br/>all-MiniLM-L6-v2 ONNX]
+    L --> K
+    E --> M[graph_extract.py<br/>claude -p + graphifyy]
+    M --> N[graphify-out/graph.json + wiki]
+    N --> O[import_graph.py]
+    O --> K
+    K --> P[FastAPI app.py<br/>routes -> services -> repos]
+    P --> Q[React 19 SPA<br/>3 tabs]
+    Q --> R[Browser at :5050]
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>graph TD
+    A[Claude JSONL] --&gt; B[convert_claude_jsonl_to_md.py]
+    C[Codex JSONL] --&gt; D[convert_codex_sessions.py]
+    B --&gt; E[markdown/*.md]
+    D --&gt; F[markdown_codex/*.md]
+    E --&gt; G[parser.py]
+    F --&gt; G
+    E --&gt; H[jsonl_reader.py]
+    H --&gt; I[load.py]
+    G --&gt; I
+    I --&gt; K[(Postgres 16)]
+    I --&gt; L[embed.py ONNX]
+    L --&gt; K
+    E --&gt; M[graph_extract.py]
+    M --&gt; N[graphify-out]
+    N --&gt; O[import_graph.py]
+    O --&gt; K
+    K --&gt; P[FastAPI app.py]
+    P --&gt; Q[React 19 SPA]
+    Q --&gt; R[Browser :5050]</code></pre></figure></div>
+                <figcaption>The ingest pipeline (left) populates Postgres; the serving path (right) reads it. Parsers are the source of truth for conversation structure; <code>jsonl_reader.py</code> only supplements model + token metadata.</figcaption>
+              </figure>
+
+              <h3 class="anchor">Backend layering (routes → services → repositories)</h3>
+              <p>After the Phase 7.1 OOP restructure, the backend is strictly layered. A request enters a thin route handler, which resolves a service via FastAPI dependency injection, which calls one or more repositories, which build SQLAlchemy queries against the models. Filter-to-SQL translation is centralized in one <code>SessionFilterScope</code> dataclass.</p>
+              <figure class="diagram">
+                <div class="mermaid">
+graph LR
+    app[app.py<br/>lifespan, SPA, /api/ready, /api/update] --> routes
+    app --> db[db.py<br/>DI providers]
+    subgraph routes["routes/"]
+        r1[projects · segments · conversations]
+        r2[stats · summaries · visibility]
+        r3[dashboard · graph]
+    end
+    subgraph services["services/ (7 + filter scope)"]
+        s1[SearchService · SessionService]
+        s2[DashboardService · GraphService]
+        s3[ProjectService · StatsService · SummaryService]
+    end
+    subgraph repos["repositories/ (5)"]
+        p1[SessionRepository · SegmentRepository]
+        p2[ToolCallRepository · SessionTopicRepository · ConceptRepository]
+    end
+    routes -->|Depends| services
+    services --> repos
+    services -.->|search.py| sm[parse_query]
+    services -.->|embed.py| em[ONNX MiniLM]
+    repos --> models[models.py]
+    db --> models
+    db --> schemas[schemas.py]
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>graph LR
+    app[app.py] --&gt; routes
+    app --&gt; db[db.py DI providers]
+    routes --&gt;|Depends| services
+    services --&gt; repos
+    services -.-&gt;|search.py| sm[parse_query]
+    services -.-&gt;|embed.py| em[ONNX MiniLM]
+    repos --&gt; models[models.py]
+    db --&gt; models
+    db --&gt; schemas[schemas.py]</code></pre></figure></div>
+                <figcaption>Routes never contain query logic. Services own bounded domains. Repositories are one-per-model (DashboardService queries the session directly because its 9 aggregations are one-off view shapes).</figcaption>
+              </figure>
+
+              <h3 class="anchor">Process &amp; container topology</h3>
+              <p>Two containers, two host-side watcher processes. The watchers run <em>outside</em> Docker because they call your locally-authenticated <code>claude</code> CLI — there's no API key in the container.</p>
+              <figure class="diagram">
+                <div class="mermaid">
+graph TD
+    subgraph host["Host machine"]
+        L[export_service.sh / .bat]
+        SW[summary watcher<br/>polls browser_state/summaries/*.pending]
+        GW[graph watcher<br/>runs graph_extract.py]
+        CLI[claude CLI]
+        SW --> CLI
+        GW --> CLI
+        L --> SW
+        L --> GW
+    end
+    subgraph docker["Docker compose"]
+        APP[llm-browser<br/>FastAPI + React build :5050]
+        PG[(postgres :5540 -> 5432<br/>pgvector/pgvector:pg16)]
+        APP --> PG
+    end
+    L --> APP
+    SW -. shared volume .- APP
+    GW -. shared volume .- APP
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>graph TD
+    L[launcher] --&gt; SW[summary watcher]
+    L --&gt; GW[graph watcher]
+    SW --&gt; CLI[claude CLI]
+    GW --&gt; CLI
+    L --&gt; APP[llm-browser FastAPI :5050]
+    APP --&gt; PG[(postgres :5540)]
+    SW -. shared volume .- APP
+    GW -. shared volume .- APP</code></pre></figure></div>
+                <figcaption>The launcher starts compose, then spawns the two watchers and traps EXIT to kill them. Watchers communicate with the container through shared bind-mounted directories (<code>browser_state/summaries</code>, <code>graphify-out</code>).</figcaption>
+              </figure>
+
+              <div class="callout key">
+                <div class="callout-title">Key concept — why a separate ingest pipeline and serving path</div>
+                <div class="callout-body">The Markdown converters (<code>convert_*.py</code>) are deliberately <em>not</em> replaced by direct-JSONL loading. They are the source of truth for conversation structure (the <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> delimiter scheme, entry keys, tool-call rendering). <code>jsonl_reader.py</code> only reads back the model name and real token usage that Markdown can't preserve. The two are merged in <code>load.py</code>.</div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== STRUCTURE -->
+        <section class="doc-section" id="structure">
+          <details>
+            <summary><span class="sec-num">5</span><h2>Directory structure</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Annotated map of the paths that matter. Generated data dirs (<code>raw/</code>, <code>markdown/</code>, <code>markdown_codex/</code>, <code>browser_state/</code>, <code>graphify-out/</code>) are gitignored and created at runtime.</p>
+
+              <h3 class="anchor">Repo root</h3>
+              <div class="filelist">
+                <div class="filecard"><code class="fileref" data-path="README.md">README.md</code><span class="filecard-desc">Human-facing overview, quick start, shutdown options, feature list.</span></div>
+                <div class="filecard"><code class="fileref" data-path="CLAUDE.md">CLAUDE.md</code><span class="filecard-desc">AI/dev guidelines: critical context, architecture rules, sacred contracts, project-level overrides.</span></div>
+                <div class="filecard"><code class="fileref" data-path="AGENTS.md">AGENTS.md</code><span class="filecard-desc">Codex-facing copy of the guidelines (near-identical content to CLAUDE.md).</span></div>
+                <div class="filecard"><code class="fileref" data-path="DESIGN.md">DESIGN.md</code><span class="filecard-desc">Product thesis, search/dashboard design, data model, anti-bloat guardrails, Graphify layer.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="docs/">docs/</code><span class="filecard-desc">Master plan + status + versions changelog.</span></div>
+                <div class="filecard"><code class="fileref" data-path="convert_export.py">convert_export.py</code><span class="filecard-desc">Cross-platform export orchestrator: sync raw JSONL, build manifest, invoke the Claude converter.</span></div>
+                <div class="filecard"><code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code><span class="filecard-desc">Core Claude JSONL → Markdown converter (one .md per project).</span></div>
+                <div class="filecard"><code class="fileref" data-path="convert_codex_sessions.py">convert_codex_sessions.py</code><span class="filecard-desc">Codex session JSONL → Markdown converter (grouped by cwd/project).</span></div>
+                <div class="filecard"><code class="fileref" data-path="graph_extract.py">graph_extract.py</code><span class="filecard-desc">Concept-graph extraction: condense markdown → claude -p → graphifyy build/cluster/wiki.</span></div>
+                <div class="filecard"><code class="fileref" data-path="export_service.sh">export_service.sh</code><span class="filecard-desc">macOS/Linux launcher: export, compose up, watchers, k/q/v/r shutdown loop.</span></div>
+                <div class="filecard"><code class="fileref" data-path="export_service.bat">export_service.bat</code><span class="filecard-desc">Windows launcher (feature parity with the .sh).</span></div>
+                <div class="filecard"><code class="fileref" data-path="summary_watcher.bat">summary_watcher.bat</code><span class="filecard-desc">Windows summary-watcher subprocess.</span></div>
+                <div class="filecard"><code class="fileref" data-path="summary_watcher.sh">summary_watcher.sh</code><span class="filecard-desc">macOS/Linux summary-watcher subprocess.</span></div>
+                <div class="filecard"><code class="fileref" data-path="graph_watcher.bat">graph_watcher.bat</code><span class="filecard-desc">Windows graph-watcher subprocess.</span></div>
+                <div class="filecard"><code class="fileref" data-path="graph_watcher.sh">graph_watcher.sh</code><span class="filecard-desc">macOS/Linux graph-watcher subprocess.</span></div>
+                <div class="filecard"><code class="fileref" data-path="docker-compose.yml">docker-compose.yml</code><span class="filecard-desc">postgres + llm-browser services, volume mounts, healthcheck, env-var substitution.</span></div>
+                <div class="filecard"><code class="fileref" data-path="Dockerfile">Dockerfile</code><span class="filecard-desc">Multi-stage: node:20-alpine builds React → python:3.13-slim runs FastAPI.</span></div>
+                <div class="filecard"><code class="fileref" data-path="claude-teams.sh">claude-teams.sh</code><span class="filecard-desc">Helper launcher (claude-teams.bat is its Windows twin).</span></div>
+              </div>
+
+              <h3 class="anchor">Backend — browser/backend/</h3>
+              <div class="filelist">
+                <div class="filecard"><code class="fileref" data-path="browser/backend/app.py">app.py</code><span class="filecard-desc">FastAPI app: lifespan (init_db + background load), CORS, router registration, /api/ready, /api/update, SPA serving.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/db.py">db.py</code><span class="filecard-desc">Async engine, session maker, init_db(), and all FastAPI DI providers (repos + services).</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/models.py">models.py</code><span class="filecard-desc">SQLAlchemy 2.0 declarative models — all 7 tables in the conversations schema, plus indexes.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/schemas.py">schemas.py</code><span class="filecard-desc">Pydantic v2 request/response models (one per API shape).</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/parser.py">parser.py</code><span class="filecard-desc">Markdown → in-memory index. Regex patterns derived from the converter output.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/jsonl_reader.py">jsonl_reader.py</code><span class="filecard-desc">Reads model + token usage out of raw JSONL (Claude usage fields; Codex provider only).</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/load.py">load.py</code><span class="filecard-desc">Merges parser + JSONL metadata, upserts into Postgres, the cost formula, embedding + cost-recompute passes.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/topics.py">topics.py</code><span class="filecard-desc">Heuristic topic extraction (project segments, file extensions, keywords, tool signals).</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/classify.py">classify.py</code><span class="filecard-desc">Heuristic session-type classifier (coding/debugging/planning/research/writing/devops).</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/embed.py">embed.py</code><span class="filecard-desc">ONNX all-MiniLM-L6-v2 wrapper: embed_text() + build_session_text().</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/search.py">search.py</code><span class="filecard-desc">Query parser: extracts structured filter prefixes into a SearchFilters Pydantic model.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/import_graph.py">import_graph.py</code><span class="filecard-desc">Imports graphify-out/graph.json into the concepts + session_concepts tables.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/routes/">routes/</code><span class="filecard-desc">8 APIRouter modules (projects, segments, conversations, stats, summaries, visibility, dashboard, graph).</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/services/">services/</code><span class="filecard-desc">7 service classes + _filter_scope.py shared filter compiler.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/repositories/">repositories/</code><span class="filecard-desc">5 repository classes (one per model; ConceptRepository also owns SessionConcept).</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/tests/">tests/</code><span class="filecard-desc">pytest suite — services/, repositories/, plus per-module + per-endpoint test files.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/requirements.txt">requirements.txt</code><span class="filecard-desc">Runtime deps.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/requirements-dev.txt">requirements-dev.txt</code><span class="filecard-desc">pytest, pytest-asyncio, pytest-cov, testcontainers, httpx, ruff.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/pyproject.toml">pyproject.toml</code><span class="filecard-desc">pytest + ruff + coverage config (fail_under = 100).</span></div>
+              </div>
+
+              <h3 class="anchor">Frontend — browser/frontend/src/</h3>
+              <div class="filelist">
+                <div class="filecard"><code class="fileref" data-path="browser/frontend/src/App.jsx">App.jsx</code><span class="filecard-desc">Integration shell — wires hooks to the three tabs. ~343 LOC post-decomposition.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/frontend/src/main.jsx">main.jsx</code><span class="filecard-desc">React entry point.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/frontend/src/api.js">api.js</code><span class="filecard-desc">One thin fetch wrapper per backend endpoint.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/frontend/src/utils.js">utils.js</code><span class="filecard-desc">Markdown renderer (DOMPurify-sanitized), stats formatting, export, wikiSlug, highlightHtml.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/frontend/src/App.css">App.css</code><span class="filecard-desc">All styles, dark + light theme via CSS custom properties.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/frontend/src/components/">components/</code><span class="filecard-desc">Header, ConversationsTab + its panes, Dashboard, KnowledgeGraph, ConceptGraph, ConceptWikiPane, Charts, Heatmap, etc.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/frontend/src/hooks/">hooks/</code><span class="filecard-desc">11 custom hooks (useSearch, useProjectSelection, useResizeHandles, useConceptWiki, useCostBreakdown, …).</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/frontend/src/__tests__/">__tests__/</code><span class="filecard-desc">Vitest tests mirroring components/ + hooks/.</span></div>
+              </div>
+
+              <h3 class="anchor">Generated data directories (gitignored, runtime-created)</h3>
+              <div class="callout note">
+                <div class="callout-title">Note — these are NOT in the repo</div>
+                <div class="callout-body">None of the directories below exist on a fresh checkout. The launcher and converter scripts create them on first run, and <code class="fileref" data-path=".gitignore">.gitignore</code> excludes them. They are listed here as <strong>plain names</strong> (not clickable file refs) precisely because there is nothing on disk to open. The data flow is: <code>convert_export.py</code> writes <code>raw/</code> + <code>markdown/</code>; <code>convert_codex_sessions.py</code> writes <code>markdown_codex/</code>; <code>graph_extract.py</code> reads <code>markdown/</code> + <code>markdown_codex/</code> and writes <code>graphify-out/</code>; the summary watcher writes <code>browser_state/summaries/</code>.</div>
+              </div>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Directory</th><th>Produced by</th><th>Contents</th></tr></thead>
+                <tbody>
+                  <tr><td><code>raw/</code></td><td><code class="fileref" data-path="convert_export.py">convert_export.py</code></td><td>Synced raw JSONL — <code>raw/projects/&lt;project&gt;/</code> + <code>raw/manifest.txt</code>.</td></tr>
+                  <tr><td><code>markdown/</code></td><td><code class="fileref" data-path="convert_export.py">convert_export.py</code> → <code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code></td><td>Generated Claude Markdown (one file per project).</td></tr>
+                  <tr><td><code>markdown_codex/</code></td><td><code class="fileref" data-path="convert_codex_sessions.py">convert_codex_sessions.py</code></td><td>Generated Codex Markdown (grouped by cwd/project).</td></tr>
+                  <tr><td><code>browser_state/</code></td><td>summary watcher (<code class="fileref" data-path="summary_watcher.sh">summary_watcher.sh</code>)</td><td>Host-side AI summary cache under <code>browser_state/summaries/</code> (the only sub-path bind-mounted into the container).</td></tr>
+                  <tr><td><code>graphify-out/</code></td><td><code class="fileref" data-path="graph_extract.py">graph_extract.py</code> (env <code>GRAPHIFY_OUT</code>)</td><td><code>graph.json</code> + <code>wiki/</code> + <code>.graphify_chunk_*.json</code> caches + <code>.status</code> / <code>.progress</code> files.</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== MODULES -->
+        <section class="doc-section" id="modules">
+          <details>
+            <summary><span class="sec-num">6</span><h2>Core modules — the heart of the system</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Each drill-down covers what the module does, its key logic, and the exact files. The three load-bearing subsystems are the converters, the data loader (cost + embeddings), and the search/graph services.</p>
+
+              <details class="sub">
+                <summary>Claude converter <span class="sub-tag">convert_claude_jsonl_to_md.py</span></summary>
+                <div class="sub-body">
+                  <p>Walks <code>SRC</code> (each subdirectory = one project) and writes one Markdown file per project to <code>DST</code>, ordered chronologically. Invoked as <code>python convert_claude_jsonl_to_md.py &lt;raw/projects&gt; &lt;markdown&gt;</code> by the orchestrator.</p>
+                  <p>Key behaviors:</p>
+                  <ul>
+                    <li><strong>Stable entry keys.</strong> Each record gets a deduplication key — a real ID (<code>uuid</code>/<code>id</code>/<code>message_id</code>/…) if present, else a SHA-256 of the record with volatile keys (timestamps, cwd, transcript_path) scrubbed out. Written as an <code>&lt;!-- ENTRY_KEY: … --&gt;</code> comment so re-runs are incremental (<code>load_existing_keys</code> skips already-written entries — but only outside code blocks).</li>
+                    <li><strong>The search delimiter.</strong> Only messages the user actually typed (<code>is_real_user_message</code> — role "user" and not a tool-result) get the <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> marker and an <code>#</code> heading. This is the primary split point the parser keys on.</li>
+                    <li><strong>Marker neutralization.</strong> <code>neutralize_markers</code> rewrites any <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> / <code>ENTRY_KEY</code> / <code>## Conversation</code> that appears <em>inside</em> quoted content (e.g. a tool result that printed the markdown file itself) so it doesn't create false matches.</li>
+                    <li><strong>Internal-tag stripping.</strong> Claude internal XML tags (<code>system-reminder</code>, thinking/function-call envelopes, hooks) are removed via regex.</li>
+                    <li><strong>Privacy.</strong> <code>sanitize_home_paths</code> replaces <code>/Users/&lt;name&gt;</code> and <code>/home/&lt;name&gt;</code> (and their dash-encoded forms) with <code>~</code>.</li>
+                    <li><strong>Tool rendering.</strong> <code>render_tool_use</code> emits <code>**Tool Call: `ToolName`**</code> + a fenced JSON block — the exact pattern the parser counts as a tool call.</li>
+                  </ul>
+                  <figure class="code">
+                    <figcaption>convert_claude_jsonl_to_md.py — the user-request delimiter (render_entry)</figcaption>
+                    <pre><code>heading = "#" if real_user else "###"
+user_delimiter = "\n&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;\n" if real_user else ""
+return "\n".join([
+    "",
+    f"&lt;!-- ENTRY_KEY: {entry_key} --&gt;",
+    f"{user_delimiter}{heading} {speaker} #{entry_num}{ts_suffix}{conv_suffix}",
+    "", body, "",
+])</code></pre>
+                  </figure>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code><span class="filecard-desc">~540 lines; the format contract everything downstream parses.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Codex converter <span class="sub-tag">convert_codex_sessions.py</span></summary>
+                <div class="sub-body">
+                  <p>Reads Codex session JSONL (one file = one session, event records with <code>payload.type</code> like <code>user_message</code>, <code>agent_message</code>, <code>function_call</code>, <code>function_call_output</code>). Groups sessions by the session's <code>cwd</code> (→ project name) and writes one Markdown file per project. User messages get the same <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> marker so the parser treats Codex and Claude output uniformly. <code>reasoning</code> and <code>token_count</code> records are skipped.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="convert_codex_sessions.py">convert_codex_sessions.py</code><span class="filecard-desc">Codex → Markdown. Session header is `## Session ...` (vs Claude's `## Conversation ...`).</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Export orchestrator <span class="sub-tag">convert_export.py</span></summary>
+                <div class="sub-body">
+                  <p>The cross-platform front door for the export step (replaces a bash-only <code>rsync</code> script). Resolves the Claude config dir (honoring <code>CLAUDE_CONFIG_DIR</code>), syncs raw JSONL with <code>shutil.copy2</code> (incremental — copies only newer/missing files, never deletes), writes <code>raw/manifest.txt</code>, then subprocess-invokes the Claude converter. Supports <code>--list</code> and a project-name filter.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="convert_export.py">convert_export.py</code><span class="filecard-desc">`python convert_export.py [--list] [project-filter]`.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Markdown parser <span class="sub-tag">browser/backend/parser.py</span></summary>
+                <div class="sub-body">
+                  <p>Turns a directory of Markdown files into an in-memory index. The regex contract (lines 32–55) mirrors the converter output exactly. Splitting on <code>USER_REQUEST_DELIM</code> yields one <code>RequestSegment</code> per user request; <code>parts[0]</code> is the preamble. Each segment's <code>conversation_id</code> comes from the heading's <code>conv:</code> suffix or the most recent <code>## Conversation/Session</code> marker. Tool-call count is just <code>TOOL_CALL_RE.findall</code>. Segment IDs are <code>stable_id(source_file, segment_index)</code> = first 16 chars of <code>SHA256("&lt;file&gt;:&lt;index&gt;")</code>.</p>
+                  <div class="callout note">
+                    <div class="callout-title">Token estimate</div>
+                    <div class="callout-body">The parser's <code>estimated_tokens</code> is a rough <code>char_count // 4</code>. This is only used for display in segment metrics — the <em>real</em> cost math in <code>load.py</code> uses actual token counts read from the JSONL <code>message.usage</code> fields.</div>
+                  </div>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/parser.py">browser/backend/parser.py</code><span class="filecard-desc">build_index(), compute_tool_breakdown(), stable_id() — used by load.py and the export pipeline.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>JSONL metadata reader <span class="sub-tag">browser/backend/jsonl_reader.py</span></summary>
+                <div class="sub-body">
+                  <p>The only place real billing data enters the system. For each Claude JSONL file it sums per-turn usage from every <code>assistant</code> record's <code>message.usage</code>: <code>input_tokens</code>, <code>output_tokens</code>, <code>cache_read_input_tokens</code>, <code>cache_creation_input_tokens</code>, and grabs the first assistant <code>message.model</code>. Subagent files are skipped. Codex only yields <code>model_provider</code> from the <code>session_meta</code> payload (no reliable token usage). Returns a <code>dict[session_id, SessionMetadata]</code> keyed on the JSONL filename stem.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/jsonl_reader.py">browser/backend/jsonl_reader.py</code><span class="filecard-desc">read_claude_metadata() + read_codex_metadata().</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Data loader &amp; cost engine <span class="sub-tag">browser/backend/load.py</span></summary>
+                <div class="sub-body">
+                  <p>The merge point. <code>load_all()</code> reads JSONL metadata, parses Markdown via <code>build_index()</code>, groups segments into sessions by <code>conversation_id</code> (standalone segments each become their own session), and upserts everything with Postgres <code>INSERT … ON CONFLICT DO UPDATE</code> for idempotency. Per session it computes a summary (first ~3 user previews), heuristic topics, a session-type classification, and the estimated cost. Tool calls are delete-and-reinsert per session (no natural unique key).</p>
+
+                  <p><strong>The cost formula</strong> is the project's most-scrutinized piece of math. <code>estimate_cost_breakdown</code> is a pure function returning a 4-way <code>CostBreakdown</code>:</p>
+                  <figure class="code">
+                    <figcaption>browser/backend/load.py — estimate_cost_breakdown (per 1M tokens)</figcaption>
+                    <pre><code>input_usd        = i  * input_price                         / 1_000_000
+output_usd       = o  * output_price                        / 1_000_000
+cache_read_usd   = cr * input_price * CACHE_READ_DISCOUNT   / 1_000_000   # 0.10
+cache_create_usd = cc * input_price * CACHE_WRITE_PREMIUM_5M/ 1_000_000   # 1.25
+total_usd        = input_usd + output_usd + cache_read_usd + cache_create_usd</code></pre>
+                  </figure>
+                  <p>Pricing per 1M tokens (<code>MODEL_PRICING</code>): opus-4-6 $15/$75, sonnet-4-6 $3/$15, haiku-4-5 $0.80/$4. Unknown models fall back to sonnet via prefix match then a hard $3/$15 default. Cache-read is billed at 10% of input price; cache-write at 125% (Anthropic's 5-minute-TTL rate — the code deliberately does <em>not</em> detect the 1-hour 2.0× tier or the 1M-context 1.5× tier because the stored JSONL has no per-turn TTL or per-call input-size signal).</p>
+                  <div class="callout key">
+                    <div class="callout-title">Key concept — denormalized cost, recomputed on startup</div>
+                    <div class="callout-body"><code>sessions.estimated_cost</code> is stored denormalized (fast sort key for the Top-5 and anomaly queries). On every app startup, <code>recompute_session_costs()</code> re-scores every row with the current formula and issues an <code>UPDATE</code> only when the stored value drifted by &gt; $0.0001. This means a formula change (like the Phase 7.5 cache-write premium) auto-corrects historical rows with no manual reload. Dashboard <em>display</em> totals come from a fresh group-by-model recomputation, not <code>SUM(estimated_cost)</code>, so the headline number and the breakdown stay in sync by construction.</div>
+                  </div>
+                  <p><code>_embed_new_sessions()</code> finds sessions with <code>embedding IS NULL</code>, batch-fetches their topics + tools (3 queries total regardless of session count), builds the compressed session text, embeds, and stores the vector — committing every 100 rows. Wrapped in try/except so a missing model is non-fatal.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/load.py">browser/backend/load.py</code><span class="filecard-desc">load_all, estimate_cost_breakdown, recompute_session_costs, _embed_new_sessions.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Heuristic enrichment <span class="sub-tag">topics.py · classify.py</span></summary>
+                <div class="sub-body">
+                  <p><strong>topics.py</strong> scores topic candidates from four signals: project-name segments (confidence 0.8), file extensions mentioned (0.6), keyword matches (0.7), and tool-derived signals (research/shell). It returns up to 5 <code>(topic, confidence)</code> tuples. Graphify concepts, when present, are merged into <code>session_topics</code> later with <code>source='graphify'</code> and 0.9 confidence (higher than any heuristic tag).</p>
+                  <p><strong>classify.py</strong> assigns one of <code>coding / debugging / planning / research / writing / devops</code> by ordered rules: devops topic keywords first, then Edit+Write&gt;3 → coding, Bash&gt;5 + "error" → debugging, low-tool + many-words → planning, web search → research, short no-edit → research, else coding.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/topics.py">browser/backend/topics.py</code><span class="filecard-desc">extract_topics().</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/classify.py">browser/backend/classify.py</code><span class="filecard-desc">classify_session().</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Embedding pipeline <span class="sub-tag">browser/backend/embed.py</span></summary>
+                <div class="sub-body">
+                  <p>Lazy-loads <code>sentence-transformers/all-MiniLM-L6-v2</code> via <code>huggingface_hub</code> on first call (downloads <code>tokenizer.json</code> + <code>onnx/model.onnx</code>). <code>embed_text(text)</code> tokenizes (max 256 tokens, padded), runs ONNX inference, mean-pools token embeddings masked by attention, L2-normalizes, and returns a 384-dim Python list. <code>build_session_text()</code> assembles the compressed representation that gets embedded:</p>
+                  <figure class="code">
+                    <figcaption>browser/backend/embed.py — build_session_text output shape</figcaption>
+                    <pre><code>[Project: conversations] [Model: opus] [Tools: Bash, Edit, Read]
+[Topics: semantic search, FastAPI] &lt;summary_text up to 500 chars&gt;</code></pre>
+                  </figure>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/embed.py">browser/backend/embed.py</code><span class="filecard-desc">embed_text(), build_session_text(), _ensure_model().</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Concept-graph extraction <span class="sub-tag">graph_extract.py</span></summary>
+                <div class="sub-body">
+                  <p>Runs on the host (via the launcher's graph watcher), not in the container, because it shells out to <code>claude -p</code>. For each Markdown file: if a chunk cache exists, skip; small files (&lt;512KB) are sent raw, larger ones are condensed (<code>condense_markdown</code> strips assistant responses, tool output, code blocks — keeping only conversation headers and the first ~300 chars of each user request, a 95–99% reduction). The condensed body is capped at 120K chars and piped to <code>claude -p --model … --system-prompt …</code>.</p>
+                  <div class="callout key">
+                    <div class="callout-title">Key concept — system prompt separation</div>
+                    <div class="callout-body">The extraction instructions go through <code>--system-prompt</code>, architecturally separate from the document content piped on stdin. This stops Claude from treating the conversation log as a conversation to <em>continue</em> — it forces pure JSON extraction. The system prompt also pins <code>file_type</code> to the 5-value Graphify enum.</div>
+                  </div>
+                  <p>Per-file results cache to <code>.graphify_chunk_*.json</code>. <code>build_graph()</code> merges all chunks (deduping node IDs, normalizing <code>file_type</code> via <code>FILE_TYPE_ALIASES</code>), then calls graphifyy's <code>build_from_json → cluster → to_json</code> and <code>to_wiki</code>. The wiki gets community articles + the top-15 god-node (highest-degree) articles. Progress and status are written to <code>.progress</code> / <code>.status</code> files the frontend polls.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="graph_extract.py">graph_extract.py</code><span class="filecard-desc">condense_markdown, extract_file, build_graph, _derive_god_nodes, _normalize_file_type.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/import_graph.py">browser/backend/import_graph.py</code><span class="filecard-desc">Reads graph.json, maps nodes to sessions by source-file stem, populates concepts + session_concepts, merges into session_topics.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>SearchService — hybrid retrieval <span class="sub-tag">browser/backend/services/search_service.py</span></summary>
+                <div class="sub-body">
+                  <p>The recall engine. <code>search()</code> parses the query (<code>parse_query</code> peels off structured filters), builds a <code>SessionFilterScope</code>, and routes to hybrid retrieval (when free text remains) or filter-only retrieval. Hybrid:</p>
+                  <ol class="steps">
+                    <li><strong>Keyword leg</strong> — tsvector top-50 sessions via <code>SegmentRepository.search_keyword_top_sessions</code>.</li>
+                    <li><strong>Vector leg</strong> — embed the query, cosine-distance top-50 via <code>SessionRepository.search_vector_top_sessions</code> (lazy import of <code>embed</code>; any failure falls back to keyword-only).</li>
+                    <li><strong>RRF fusion</strong> — <code>_rrf_merge</code> with k=60, normalized to [0,1].</li>
+                    <li><strong>Final scoring</strong> — <code>0.6·rrf + 0.2·recency + 0.1·length + 0.1·exact_match</code>.</li>
+                    <li><strong>Community boost</strong> — <code>+0.05 × shared-Leiden-community-count</code> with the top result (returns {} when no concept data).</li>
+                    <li><strong>Snippets</strong> — second-pass keyword search inside each matched session's segments; falls back to summary text.</li>
+                  </ol>
+                  <figure class="code">
+                    <figcaption>browser/backend/services/search_service.py — the scoring formula</figcaption>
+                    <pre><code>scored[sid] = (
+    0.6 * rrf
+  + 0.2 * _recency_boost(session.started_at, now)   # 1/(1+log(1+days/30))
+  + 0.1 * _length_signal(session.total_words)        # log-scaled word count
+  + 0.1 * _exact_match_bonus(session.summary_text, query_text)
+)</code></pre>
+                  </figure>
+                  <p><code>get_status()</code> drives the UI mode badges (unavailable / keyword / embedding / hybrid) from visible-vs-embedded session counts plus concept-community presence.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/services/search_service.py">services/search_service.py</code><span class="filecard-desc">SearchService + module-level scoring helpers.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/services/_filter_scope.py">services/_filter_scope.py</code><span class="filecard-desc">SessionFilterScope — compiles SearchFilters into WHERE clauses + tool/topic subqueries once per request.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/search.py">search.py</code><span class="filecard-desc">parse_query() + SearchFilters/ParsedQuery models. Malformed filters fall back into free text.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>DashboardService — aggregations <span class="sub-tag">browser/backend/services/dashboard_service.py</span></summary>
+                <div class="sub-body">
+                  <p>A read-model service — pure SQL aggregations, no writes. Queries the session directly (its 9 view shapes would bloat per-model repos). All endpoints share a <code>DashboardFilters</code> bag (provider, date_from/to, project, model) applied via <code>.apply(stmt)</code>. Cost numbers are <strong>always</strong> computed by grouping on model and pricing each group through <code>estimate_cost_breakdown</code> then summing — never <code>SUM(estimated_cost)</code> — so the headline total equals the sum of the 4-way breakdown.</p>
+                  <p>Highlights: <code>get_top_expensive_sessions</code> orders by stored <code>estimated_cost DESC</code> (index-backed) but recomputes each row's breakdown for display, surfacing <code>cache_read_pct</code> — the single most important transparency signal (sessions whose bill is dominated by cached-context re-reads). <code>get_graph</code> auto-imports <code>graph.json</code> on first request and caps the graph at the 200 highest-degree concepts to keep d3 responsive.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/services/dashboard_service.py">services/dashboard_service.py</code><span class="filecard-desc">get_summary, cost-over-time, projects/tools/models, session-types, heatmap, anomalies, top-expensive, get_graph.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>GraphService — the wiki surface <span class="sub-tag">browser/backend/services/graph_service.py</span></summary>
+                <div class="sub-body">
+                  <p>Owns the file-protocol the host watcher uses (trigger / status / progress files) plus the Phase 8 wiki endpoints. <code>resolve_wiki_slug</code> precedence: a god-node article by display name wins over a community article (looked up via <code>concepts.community_id</code>). <code>_wiki_slug</code> reimplements graphifyy's filename rule (three literal substitutions, locked by a parity test).</p>
+                  <div class="callout warn">
+                    <div class="callout-title">Watch out — path traversal guard</div>
+                    <div class="callout-body"><code>_safe_wiki_path</code> resolves <code>wiki/{slug}.md</code> and asserts it stays under the wiki root via <code>Path.relative_to()</code>; any escape returns <code>None</code> → the route returns 404. Note: httpx's ASGITransport URL-decodes <code>%2F</code> before routing, so a wire-level <code>../</code> test hits the SPA catch-all instead — the definitive coverage is the service-level <code>test_safe_wiki_path_rejects_traversal_with_parent</code>.</div>
+                  </div>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/services/graph_service.py">services/graph_service.py</code><span class="filecard-desc">load_wiki_index, load_wiki_article, resolve_wiki_slug, _safe_wiki_path, trigger_regeneration, import_from_disk.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>SummaryService — host-side AI summaries <span class="sub-tag">browser/backend/services/summary_service.py</span></summary>
+                <div class="sub-body">
+                  <p>A filesystem state machine. The service writes <code>&lt;id&gt;.input</code> + <code>&lt;id&gt;.pending</code> markers into <code>SUMMARIES_DIR</code>; the host watcher polls for <code>*.pending</code>, runs <code>claude -p</code>, writes <code>&lt;id&gt;.md</code> (first line <code>TITLE: …</code>), and deletes the markers. The service reads the result back and exposes <code>none/pending/ready</code> states. Conversation summaries use a hierarchical rollup (chunk into ~80K-char pieces, cascade). Cached summaries survive container restarts because the directory is a bind mount.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/services/summary_service.py">services/summary_service.py</code><span class="filecard-desc">request/get/delete segment + conversation summaries; the .pending/.input/.md protocol.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="summary_watcher.sh">summary_watcher.sh</code><span class="filecard-desc">The host-side poller (logic also inlined in export_service.sh::start_summary_watcher).</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Repositories — the data-access layer <span class="sub-tag">browser/backend/repositories/</span></summary>
+                <div class="sub-body">
+                  <p>One repository per model. They own all SQLAlchemy query construction and accept a <code>SessionFilterScope</code> to stay ignorant of <code>SearchFilters</code>' structure. <code>SessionRepository.search_vector_top_sessions</code> is the pgvector hot path: it orders by <code>Session.embedding.cosine_distance(query_vector)</code> and returns <code>(id, similarity)</code> pairs, filtering to non-null embeddings.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/repositories/session_repository.py">session_repository.py</code><span class="filecard-desc">Batch fetch, vector search, filter-only search, count/distinct, hidden-state ops.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/repositories/segment_repository.py">segment_repository.py</code><span class="filecard-desc">tsvector keyword search, best-match snippet text.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/backend/repositories/concept_repository.py">concept_repository.py</code><span class="filecard-desc">Concept + SessionConcept queries; community memberships for re-ranking.</span></div>
+                  </div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Frontend shell &amp; hooks <span class="sub-tag">browser/frontend/src/</span></summary>
+                <div class="sub-body">
+                  <p><code>App.jsx</code> is a thin shell — it composes 11 hooks and renders one of three tabs. The interesting logic lives in the hooks: <code>useSearch</code> (debounced query + filter parsing + mode polling), <code>useProjectSelection</code> (segment/conversation loading), <code>useResizeHandles</code> (4 draggable pane widths including the wiki pane), <code>useConceptWiki</code> (AbortController-based wiki fetch with unlimited breadcrumb), <code>useHideRestore</code> (soft-delete), <code>useCostBreakdown</code>. The Knowledge Graph tab becomes a split pane (<code>ConceptGraph</code> left, <code>ConceptWikiPane</code> right) once a concept is clicked — plain click opens the wiki in place; Cmd/Ctrl+click jumps to Conversations with <code>topic:&lt;name&gt;</code>.</p>
+                  <div class="filelist">
+                    <div class="filecard"><code class="fileref" data-path="browser/frontend/src/App.jsx">src/App.jsx</code><span class="filecard-desc">Integration shell.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/frontend/src/hooks/useSearch.js">hooks/useSearch.js</code><span class="filecard-desc">Debounced search + mode badge polling.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/frontend/src/hooks/useConceptWiki.js">hooks/useConceptWiki.js</code><span class="filecard-desc">Wiki pane fetch lifecycle + breadcrumb.</span></div>
+                    <div class="filecard"><code class="fileref" data-path="browser/frontend/src/components/ConceptGraph.jsx">components/ConceptGraph.jsx</code><span class="filecard-desc">d3 force layout; click branches on metaKey/ctrlKey.</span></div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== DATA MODEL -->
+        <section class="doc-section" id="data-model">
+          <details>
+            <summary><span class="sec-num">7</span><h2>Data model &amp; contracts</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Seven tables under the <code>conversations</code> schema (source of truth: <code class="fileref" data-path="browser/backend/models.py">models.py</code>). Pydantic API shapes live in <code class="fileref" data-path="browser/backend/schemas.py">schemas.py</code>. The schema is created at startup via <code>Base.metadata.create_all()</code> — there is no Alembic; schema changes mean "wipe the volume and reload."</p>
+
+              <div class="callout danger">
+                <div class="callout-title">Do not</div>
+                <div class="callout-body">These are <strong>sacred contracts</strong> per <code class="fileref" data-path="CLAUDE.md">CLAUDE.md</code> §0 — do not change them without a master-plan update: the 7 tables, the cost formula in <code>load.py::estimate_cost_breakdown</code>, and the <code>SessionSearchResult</code> shape (the frontend relies on it verbatim).</div>
+              </div>
+
+              <figure class="diagram">
+                <div class="mermaid">
+erDiagram
+    SESSIONS ||--o{ SEGMENTS : has
+    SESSIONS ||--o{ TOOL_CALLS : has
+    SESSIONS ||--o{ SESSION_TOPICS : has
+    SESSIONS ||--o{ SESSION_CONCEPTS : has
+    SEGMENTS ||--o{ TOOL_CALLS : in
+    CONCEPTS ||--o{ SESSION_CONCEPTS : links
+    SESSIONS {
+        text id PK
+        text provider
+        text project
+        text model
+        int input_tokens
+        int output_tokens
+        int cache_read_tokens
+        int cache_creation_tokens
+        numeric estimated_cost
+        text session_type
+        vector embedding
+        timestamptz hidden_at
+        tsvector search_vector
+    }
+    SEGMENTS {
+        text id PK
+        text session_id FK
+        int segment_index
+        text raw_text
+        text preview
+        tsvector search_vector
+    }
+    TOOL_CALLS {
+        int id PK
+        text session_id FK
+        text segment_id FK
+        text tool_name
+        text tool_family
+    }
+    SESSION_TOPICS {
+        text session_id PK
+        text topic PK
+        float confidence
+        text source
+    }
+    CONCEPTS {
+        text id PK
+        text name
+        int community_id
+        int degree
+    }
+    SESSION_CONCEPTS {
+        text session_id PK
+        text concept_id PK
+        text relationship PK
+        float confidence
+    }
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>erDiagram
+    SESSIONS ||--o{ SEGMENTS : has
+    SESSIONS ||--o{ TOOL_CALLS : has
+    SESSIONS ||--o{ SESSION_TOPICS : has
+    SESSIONS ||--o{ SESSION_CONCEPTS : has
+    SEGMENTS ||--o{ TOOL_CALLS : in
+    CONCEPTS ||--o{ SESSION_CONCEPTS : links</code></pre></figure></div>
+                <figcaption>The 7-table schema. <code>saved_searches</code> exists in models.py but no route consumes it yet (the feature is planned, not built).</figcaption>
+              </figure>
+
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Table</th><th>PK</th><th>Purpose &amp; notable columns</th></tr></thead>
+                <tbody>
+                  <tr><td><code>sessions</code></td><td><code>id TEXT</code></td><td>One row per conversation. Token counts, <code>estimated_cost</code>, <code>summary_text</code>, <code>session_type</code>, 384-dim <code>embedding</code>, soft-delete <code>hidden_at</code>, generated <code>search_vector</code> (tsvector over summary).</td></tr>
+                  <tr><td><code>segments</code></td><td><code>id TEXT</code></td><td>One request/response segment. FK → sessions. <code>raw_text</code>, <code>preview</code>, generated <code>search_vector</code> over raw_text. UNIQUE <code>(session_id, segment_index)</code>.</td></tr>
+                  <tr><td><code>tool_calls</code></td><td><code>id SERIAL</code></td><td>One row per tool invocation. FK → sessions + segments. <code>tool_name</code>, <code>tool_family</code>.</td></tr>
+                  <tr><td><code>session_topics</code></td><td><code>(session_id, topic)</code></td><td>Auto topics. <code>confidence</code>, <code>source</code> ('heuristic' or 'graphify').</td></tr>
+                  <tr><td><code>saved_searches</code></td><td><code>id SERIAL</code></td><td>JSONB filter storage. <em>Defined but not yet exposed by any route.</em></td></tr>
+                  <tr><td><code>concepts</code></td><td><code>id TEXT</code></td><td>Graphify nodes. <code>community_id</code> (Leiden), <code>degree</code>. Optional.</td></tr>
+                  <tr><td><code>session_concepts</code></td><td><code>(session_id, concept_id, relationship)</code></td><td>Graphify edges. <code>edge_type</code>, <code>confidence</code>. Optional.</td></tr>
+                </tbody>
+              </table></div>
+
+              <h3 class="anchor">Indexes (defined in models.py __table_args__)</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Kind</th><th>Index</th></tr></thead>
+                <tbody>
+                  <tr><td>B-tree</td><td><code>sessions</code>: project, provider, started_at, model, estimated_cost, session_type · <code>segments.session_id</code> · <code>tool_calls</code>: session_id, tool_name · <code>session_topics.topic</code></td></tr>
+                  <tr><td>GIN (FTS)</td><td><code>sessions.search_vector</code>, <code>segments.search_vector</code></td></tr>
+                  <tr><td>HNSW (vector)</td><td><code>sessions.embedding</code> with <code>vector_cosine_ops</code> (m=16, ef_construction=64)</td></tr>
+                  <tr><td>GIN trigram</td><td><code>sessions.summary_text</code> with <code>gin_trgm_ops</code></td></tr>
+                </tbody>
+              </table></div>
+
+              <h3 class="anchor">The search result contract (frontend-coupled)</h3>
+              <figure class="code">
+                <figcaption>browser/backend/schemas.py — SessionSearchResult</figcaption>
+                <pre><code>class SessionSearchResult(BaseModel):
+    session_id: str
+    project: str
+    date: str | None
+    model: str | None
+    cost: float | None
+    snippet: str
+    tool_summary: str
+    tools: dict[str, int]
+    turn_count: int | None
+    topics: list[str]
+    conversation_id: str | None
+    rank: float</code></pre>
+              </figure>
+
+              <h3 class="anchor">Tool-family mapping</h3>
+              <p>Defined identically in <code class="fileref" data-path="browser/backend/load.py">load.py</code> and <code class="fileref" data-path="browser/backend/services/dashboard_service.py">dashboard_service.py</code>:</p>
+              <dl class="doc-dl">
+                <dt>file_ops</dt><dd>Read, Edit, Write, Glob, NotebookEdit</dd>
+                <dt>search</dt><dd>Grep, Agent</dd>
+                <dt>execution</dt><dd>Bash</dd>
+                <dt>web</dt><dd>WebSearch, WebFetch</dd>
+                <dt>planning</dt><dd>TaskCreate, TaskUpdate, TodoWrite</dd>
+                <dt>other</dt><dd>catch-all for everything else</dd>
+              </dl>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== APIs -->
+        <section class="doc-section" id="apis">
+          <details>
+            <summary><span class="sec-num">8</span><h2>API endpoints</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">All routes are registered in <code class="fileref" data-path="browser/backend/app.py">app.py</code>. Handlers are thin shells over services; every endpoint declares a <code>response_model</code>. FastAPI auto-generates docs at <code>/docs</code>.</p>
+
+              <h3 class="anchor">Browse &amp; search</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Method · Path</th><th>Returns</th><th>Defined in</th></tr></thead>
+                <tbody>
+                  <tr><td><code>GET /api/ready</code></td><td><code>{ ready: bool }</code> — startup load complete?</td><td><code class="fileref" data-path="browser/backend/app.py">app.py</code></td></tr>
+                  <tr><td><code>POST /api/update</code></td><td>Runs sync + convert + reload pipeline</td><td><code class="fileref" data-path="browser/backend/app.py">app.py</code></td></tr>
+                  <tr><td><code>GET /api/providers</code></td><td>Provider list with project/segment counts</td><td><code class="fileref" data-path="browser/backend/routes/projects.py">routes/projects.py</code></td></tr>
+                  <tr><td><code>GET /api/projects</code></td><td>Projects sorted by recent activity (+stats)</td><td><code class="fileref" data-path="browser/backend/routes/projects.py">routes/projects.py</code></td></tr>
+                  <tr><td><code>GET /api/projects/{p}/segments</code></td><td>Segment list for a project</td><td><code class="fileref" data-path="browser/backend/routes/projects.py">routes/projects.py</code></td></tr>
+                  <tr><td><code>GET /api/segments/{id}</code></td><td><code>SegmentDetail</code> (raw markdown + metrics)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/segments/{id}/export</code></td><td><code>SegmentExport</code> (filename + content)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/search?q=…</code></td><td><code>list[SessionSearchResult]</code> (hybrid)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/search/status</code></td><td><code>SearchStatus</code> (mode badges)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/search/filters</code></td><td><code>SearchFilterValues</code> (autocomplete)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/sessions/{id}/related</code></td><td><code>list[RelatedSession]</code> (shared concepts)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/sessions/{id}/cost-breakdown</code></td><td><code>CostBreakdown</code> (4-way)</td><td><code class="fileref" data-path="browser/backend/routes/segments.py">routes/segments.py</code></td></tr>
+                  <tr><td><code>GET /api/projects/{p}/conversation/{cid}</code></td><td><code>ConversationView</code></td><td><code class="fileref" data-path="browser/backend/routes/conversations.py">routes/conversations.py</code></td></tr>
+                  <tr><td><code>GET /api/stats</code></td><td><code>GlobalStats</code></td><td><code class="fileref" data-path="browser/backend/routes/stats.py">routes/stats.py</code></td></tr>
+                </tbody>
+              </table></div>
+
+              <h3 class="anchor">Search filter syntax</h3>
+              <p>Structured prefixes are parsed out of the free-text query by <code class="fileref" data-path="browser/backend/search.py">search.py</code>; the remainder is the semantic/keyword query. Malformed values are left in the free text (no crash).</p>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Filter</th><th>Example</th><th>Matching</th></tr></thead>
+                <tbody>
+                  <tr><td><code>project:</code></td><td><code>project:conversations</code></td><td>exact</td></tr>
+                  <tr><td><code>model:</code></td><td><code>model:opus</code></td><td>ilike substring</td></tr>
+                  <tr><td><code>provider:</code></td><td><code>provider:codex</code></td><td>enum</td></tr>
+                  <tr><td><code>after: / before:</code></td><td><code>after:2026-03-01</code></td><td>date range (before is exclusive +1 day)</td></tr>
+                  <tr><td><code>tool:</code></td><td><code>tool:Bash,Edit</code></td><td>session has any</td></tr>
+                  <tr><td><code>topic:</code></td><td><code>topic:docker</code></td><td>ilike substring</td></tr>
+                  <tr><td><code>cost:&gt;</code></td><td><code>cost:&gt;5.00</code></td><td>threshold</td></tr>
+                  <tr><td><code>turns:&gt;</code></td><td><code>turns:&gt;10</code></td><td>threshold</td></tr>
+                </tbody>
+              </table></div>
+
+              <h3 class="anchor">Dashboard (all accept provider/date/project/model filters)</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Path (prefix <code>/api/dashboard</code>)</th><th>Returns</th></tr></thead>
+                <tbody>
+                  <tr><td><code>/summary</code></td><td><code>DashboardSummary</code> (cards + deltas + cost_breakdown)</td></tr>
+                  <tr><td><code>/cost-over-time</code></td><td><code>list[CostOverTimePeriod]</code> (group_by day/week/month, stack_by project/model/provider)</td></tr>
+                  <tr><td><code>/projects</code></td><td><code>list[ProjectBreakdown]</code></td></tr>
+                  <tr><td><code>/tools</code></td><td><code>list[ToolUsage]</code></td></tr>
+                  <tr><td><code>/models</code></td><td><code>list[ModelBreakdown]</code></td></tr>
+                  <tr><td><code>/session-types</code></td><td><code>list[SessionTypeDistribution]</code></td></tr>
+                  <tr><td><code>/heatmap</code></td><td><code>list[HeatmapDay]</code> (last 365 days)</td></tr>
+                  <tr><td><code>/anomalies</code></td><td><code>list[AnomalyRow]</code> (&gt;2σ cost)</td></tr>
+                  <tr><td><code>/top-expensive-sessions</code></td><td><code>list[TopExpensiveSession]</code> (+ cache_read_pct)</td></tr>
+                  <tr><td><code>/graph</code>, <code>/graph/status</code></td><td><code>GraphResponse</code> / <code>GraphStatus</code></td></tr>
+                  <tr><td><code>POST /graph/generate</code>, <code>POST /graph/import</code></td><td>Trigger watcher / import graph.json</td></tr>
+                </tbody>
+              </table></div>
+
+              <h3 class="anchor">Knowledge-graph wiki (prefix <code>/api/graph/wiki</code>)</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Path</th><th>Returns</th></tr></thead>
+                <tbody>
+                  <tr><td><code>GET /index</code></td><td><code>WikiIndex</code> (parsed from wiki/index.md)</td></tr>
+                  <tr><td><code>GET /lookup?concept_id=…&amp;concept_name=…</code></td><td><code>WikiLookup { slug }</code> (god-node first, community fallback)</td></tr>
+                  <tr><td><code>GET /{slug}</code></td><td><code>WikiArticle { slug, title, markdown }</code></td></tr>
+                </tbody>
+              </table></div>
+              <p>Route registration order matters: <code>/index</code> and <code>/lookup</code> register before <code>/{slug}</code> so FastAPI doesn't match them as slugs (<code class="fileref" data-path="browser/backend/routes/graph.py">routes/graph.py</code>).</p>
+
+              <h3 class="anchor">Visibility &amp; summaries</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Path</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><code>POST /api/hide|restore/{segment|conversation|project}/…</code></td><td>Soft delete / restore (sets/clears <code>hidden_at</code>)</td></tr>
+                  <tr><td><code>POST /api/restore/all</code> · <code>GET /api/hidden</code></td><td>Restore everything · list hidden</td></tr>
+                  <tr><td><code>POST /api/summary/{segment_id}</code> · <code>GET /api/summary/{segment_id}</code></td><td>Request / poll a segment summary</td></tr>
+                  <tr><td><code>POST|GET /api/summary/conversation/{p}/{cid}</code></td><td>Hierarchical conversation summary</td></tr>
+                  <tr><td><code>GET /api/summary/titles</code></td><td>All cached titles (<code>{key: title}</code>)</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== CONFIG -->
+        <section class="doc-section" id="config">
+          <details>
+            <summary><span class="sec-num">9</span><h2>Configuration &amp; environment</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">All ports and credentials use <code>${VAR:-default}</code> substitution in <code class="fileref" data-path="docker-compose.yml">docker-compose.yml</code>. Container-side defaults are also set in <code class="fileref" data-path="Dockerfile">Dockerfile</code>.</p>
+
+              <div class="callout warn">
+                <div class="callout-title">Watch out — .env.example is not on disk</div>
+                <div class="callout-body">The docs (<code class="fileref" data-path="docs/versions.md">versions.md</code> v2.1.1, <code class="fileref" data-path="docs/CONVERSATIONS_MASTER_PLAN.md">master plan</code> §10 Phase 9.1) claim a <code>.env.example</code> was committed at the repo root. It is <strong>not present</strong> — and the repo's <code class="fileref" data-path=".gitignore">.gitignore</code> excludes <code>.env.*</code>, which would block committing it. The variables below come from reading the compose + Dockerfile directly. Treat the table as the real source of truth, not the (absent) example file.</div>
+              </div>
+
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>PORT</code></td><td><code>5050</code></td><td>App (FastAPI + SPA) host port.</td></tr>
+                  <tr><td><code>POSTGRES_PORT</code></td><td><code>5540</code></td><td>Host port mapped to Postgres 5432.</td></tr>
+                  <tr><td><code>POSTGRES_USER / _PASSWORD / _DB</code></td><td><code>conversations</code></td><td>Postgres credentials (all default to "conversations").</td></tr>
+                  <tr><td><code>DATABASE_URL</code></td><td>composed from the above</td><td><code>postgresql+asyncpg://…@postgres:5432/…</code></td></tr>
+                  <tr><td><code>CORS_ORIGINS</code></td><td>localhost:5174,5050,127.0.0.1:5174</td><td>Comma-separated allowed origins (<code>_parse_cors_origins</code> in app.py).</td></tr>
+                  <tr><td><code>CLAUDE_PROJECTS_DIR</code></td><td><code>~/.claude/projects</code></td><td>Host source of Claude JSONL (read-only mount). Set explicitly on Windows.</td></tr>
+                  <tr><td><code>CODEX_SESSIONS_DIR</code></td><td><code>~/.codex/sessions</code></td><td>Host source of Codex sessions (read-only mount).</td></tr>
+                  <tr><td><code>SUMMARY_MODEL</code></td><td><code>claude-sonnet-4-6</code></td><td>Model the summary watcher passes to <code>claude -p</code>.</td></tr>
+                  <tr><td><code>GRAPHIFY_MODEL</code></td><td><code>claude-sonnet-4-6</code></td><td>Model graph extraction passes to <code>claude -p</code>.</td></tr>
+                  <tr><td><code>MARKDOWN_DIR / RAW_DIR / GRAPHIFY_OUT / SUMMARY_DIR</code></td><td><code>/data/…</code></td><td>Container-side data paths (set in compose env).</td></tr>
+                </tbody>
+              </table></div>
+
+              <p>Bind mounts (from <code class="fileref" data-path="docker-compose.yml">docker-compose.yml</code>): source JSONL read-only, <code>raw/ markdown/ markdown_codex/ browser_state/summaries/ graphify-out/</code> read-write, named volume <code>pgdata</code> for Postgres.</p>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== RUN -->
+        <section class="doc-section" id="run">
+          <details>
+            <summary><span class="sec-num">10</span><h2>How to run it</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">One command starts everything. The launcher exports conversations, builds + starts the Docker stack, spawns the watchers, and drops into a k/q/v/r shutdown loop.</p>
+
+              <h3 class="anchor">Full run (Docker)</h3>
+              <ol class="steps">
+                <li>Have Docker Desktop running and Python 3.10+ on PATH (for the export step only).</li>
+                <li>macOS/Linux: run <code class="fileref" data-path="export_service.sh">export_service.sh</code>. Windows: run <code class="fileref" data-path="export_service.bat">export_service.bat</code>.</li>
+                <li>The script exports <code>~/.claude/projects/</code> → <code>./markdown/</code>, runs <code>docker compose up --build -d</code>, syncs Postgres, starts the summary + graph watchers.</li>
+                <li>Open <code>http://localhost:5050</code> (auto-opened on success).</li>
+              </ol>
+              <p>Startup flags: <code>--skip-export</code> (use existing markdown), <code>--export-only</code> (no browser), or a bare <code>project-name</code> to filter the export. Override the port with <code>PORT=8080 ./export_service.sh</code>.</p>
+
+              <h3 class="anchor">Shutdown / restart loop</h3>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Key</th><th>Containers</th><th>Images</th><th>Volumes</th><th>Generated data</th><th>Restarts?</th></tr></thead>
+                <tbody>
+                  <tr><td><code>k</code></td><td>Stopped</td><td>Kept</td><td>Kept</td><td>Kept</td><td>No</td></tr>
+                  <tr><td><code>q</code></td><td>Removed</td><td>Removed</td><td>Kept</td><td>Kept</td><td>No</td></tr>
+                  <tr><td><code>v</code></td><td>Removed</td><td>Removed</td><td>Removed</td><td><strong>Deleted</strong></td><td>No</td></tr>
+                  <tr><td><code>r</code></td><td>Removed</td><td>Removed</td><td>Removed</td><td><strong>Deleted</strong></td><td><strong>Yes</strong> — re-exports, rebuilds, relaunches</td></tr>
+                </tbody>
+              </table></div>
+              <p>Any unrecognized key reprints the menu. <code>v</code> and <code>r</code> wipe <code>raw/ markdown/ markdown_codex/ browser_state/ graphify-out/</code> but never touch <code>~/.claude/projects/</code>.</p>
+
+              <h3 class="anchor">Local dev (no Docker, hot reload)</h3>
+              <ol class="steps">
+                <li>Backend: <code>cd browser/backend &amp;&amp; pip install -r requirements.txt &amp;&amp; MARKDOWN_DIR=../../markdown uvicorn app:app --reload --port 5050</code> (needs a running Postgres reachable via <code>DATABASE_URL</code>).</li>
+                <li>Frontend: <code>cd browser/frontend &amp;&amp; npm install &amp;&amp; npm run dev</code> — Vite serves on :5174 and proxies <code>/api</code> to :5050.</li>
+              </ol>
+
+              <div class="callout warn">
+                <div class="callout-title">Watch out — Windows .bat in a non-TTY runner</div>
+                <div class="callout-body">The interactive k/q/v/r prompt uses <code>set /p</code>, which hangs in a non-interactive batch run (e.g. PyCharm's right-click "Run"). Launch the <code>.bat</code> from a real terminal (or enable "Emulate terminal in output console").</div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== EDITING -->
+        <section class="doc-section" id="editing">
+          <details>
+            <summary><span class="sec-num">11</span><h2>How to edit &amp; extend it</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Practical, owner-focused. "To add X, touch these files." The backend's strict layering means most additions follow the same route → service → repository path.</p>
+
+              <details class="sub">
+                <summary>Add a new API endpoint</summary>
+                <div class="sub-body">
+                  <ol class="steps">
+                    <li>Define the response shape in <code class="fileref" data-path="browser/backend/schemas.py">schemas.py</code> (a Pydantic model).</li>
+                    <li>Add the query/aggregation method to the relevant service in <code class="fileref dir" data-path="browser/backend/services/">services/</code> (or a repository if it's a single-model query).</li>
+                    <li>Add a thin handler to the matching router in <code class="fileref dir" data-path="browser/backend/routes/">routes/</code> — parse params, <code>Depends(get_*_service)</code>, call the method, return it. Declare <code>response_model=</code>.</li>
+                    <li>If it's a new resource, register the router in <code class="fileref" data-path="browser/backend/app.py">app.py</code>.</li>
+                    <li>Add a fetch wrapper in <code class="fileref" data-path="browser/frontend/src/api.js">api.js</code>, then wire it into a component/hook.</li>
+                    <li>Add tests under <code class="fileref dir" data-path="browser/backend/tests/">tests/</code> (services + repositories are directly traced; route tests assert real DB state). CI gates at 100% coverage — untested lines fail the build.</li>
+                  </ol>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Add or change a database column</summary>
+                <div class="sub-body">
+                  <p>Edit the model in <code class="fileref" data-path="browser/backend/models.py">models.py</code> and the matching Pydantic schema. <strong>There is no migration system</strong> — apply the change by wiping the volume and reloading: <code>docker compose down -v</code> then re-run the launcher (or <code>load.py</code>). For a sacred-contract table, update the master plan first (see §7 of this doc).</p>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Change the cost formula or add a model price</summary>
+                <div class="sub-body">
+                  <p>Edit <code>MODEL_PRICING</code> (add a <code>"model-name": (input, output)</code> entry) and/or the premium constants in <code class="fileref" data-path="browser/backend/load.py">load.py</code>. Because <code>recompute_session_costs()</code> runs on every startup, the change auto-applies to historical rows — no manual reload needed. Add a canonical case to <code class="fileref" data-path="browser/backend/tests/test_load_cost.py">tests/test_load_cost.py</code>. Document the rationale in <code class="fileref" data-path="docs/CONVERSATIONS_MASTER_PLAN.md">master plan</code> §5.</p>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Add a new search filter prefix</summary>
+                <div class="sub-body">
+                  <ol class="steps">
+                    <li>Add a field to <code>SearchFilters</code> and a pattern to <code>_FILTER_PATTERNS</code> in <code class="fileref" data-path="browser/backend/search.py">search.py</code>.</li>
+                    <li>Translate it to a WHERE clause in <code class="fileref" data-path="browser/backend/services/_filter_scope.py">_filter_scope.py</code> (<code>SessionFilterScope.build</code>).</li>
+                    <li>If it should appear as an autocomplete chip, surface its distinct values in <code>SearchService.get_filters</code> and render the chip in <code class="fileref" data-path="browser/frontend/src/components/FilterChips.jsx">FilterChips.jsx</code>.</li>
+                  </ol>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Add a dashboard chart</summary>
+                <div class="sub-body">
+                  <ol class="steps">
+                    <li>Add the aggregation to <code class="fileref" data-path="browser/backend/services/dashboard_service.py">dashboard_service.py</code> and an endpoint to <code class="fileref" data-path="browser/backend/routes/dashboard.py">routes/dashboard.py</code> (respect <code>DashboardFilters</code> so it coordinates with global filters).</li>
+                    <li>Add a fetcher to <code class="fileref" data-path="browser/frontend/src/api.js">api.js</code>.</li>
+                    <li>Build the chart component (Chart.js via react-chartjs-2 — see <code class="fileref" data-path="browser/frontend/src/components/Charts.jsx">Charts.jsx</code>) and mount it in <code class="fileref" data-path="browser/frontend/src/components/Dashboard.jsx">Dashboard.jsx</code>.</li>
+                  </ol>
+                  <div class="callout danger"><div class="callout-title">Do not</div><div class="callout-body">Don't add features that assume manual browsing of old conversations, per-turn cost attribution, manual tagging, or tool-output indexing. The anti-bloat guardrails in <code class="fileref" data-path="DESIGN.md">DESIGN.md</code> §7 reject these explicitly.</div></div>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Change the Markdown format / parser</summary>
+                <div class="sub-body">
+                  <p>The converter (<code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code>) and the parser (<code class="fileref" data-path="browser/backend/parser.py">parser.py</code>) share an implicit contract: the <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> delimiter, the <code># User #N — &lt;ts&gt; — conv:</code> heading, the <code>&lt;!-- ENTRY_KEY: … --&gt;</code> comment, and <code>**Tool Call: `Name`**</code>. If you change one, change the other, and update the regexes in <code>parser.py</code> lines 32–55.</p>
+                </div>
+              </details>
+
+              <details class="sub">
+                <summary>Decompose / add a frontend component or hook</summary>
+                <div class="sub-body">
+                  <p>One concept per file. Components live in <code class="fileref dir" data-path="browser/frontend/src/components/">components/</code>, hooks (named <code>useX.js</code>) in <code class="fileref dir" data-path="browser/frontend/src/hooks/">hooks/</code>, each with a test in <code class="fileref dir" data-path="browser/frontend/src/__tests__/">__tests__/</code>. The flat 100/100/100 vitest gate means every branch needs a test — extract pure helpers (the pattern Phase 9 used for <code>Dashboard.jsx</code> and <code>ConceptGraph.jsx</code>) when d3/Chart.js callbacks aren't reachable in jsdom.</p>
+                </div>
+              </details>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== TESTING -->
+        <section class="doc-section" id="testing">
+          <details>
+            <summary><span class="sec-num">12</span><h2>Testing</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Both layers are held at 100% coverage in CI. Backend uses a real Postgres testcontainer (no DB mocking).</p>
+
+              <h3 class="anchor">Backend — pytest + pgvector testcontainer</h3>
+              <p>Run (needs Docker for the testcontainer):</p>
+              <figure class="code">
+                <figcaption>from browser/backend/</figcaption>
+                <pre><code>ruff check .
+pytest --cov --cov-fail-under=100</code></pre>
+              </figure>
+              <p>The suite spins up a real <code>pgvector/pgvector:pg16</code> container (<code class="fileref" data-path="browser/backend/tests/conftest.py">conftest.py</code>) with a NullPool engine swap so each test loop gets fresh asyncpg connections. The ONNX model is never downloaded — <code>embed</code> is monkeypatched. Two pragmas exist (the <code>load.py</code> CLI bootstrap and the unreachable <code>_rrf_merge</code> fallback), both under the global CLAUDE.md exception rules.</p>
+              <div class="filelist">
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/tests/services/">tests/services/</code><span class="filecard-desc">One test file per service.</span></div>
+                <div class="filecard"><code class="fileref dir" data-path="browser/backend/tests/repositories/">tests/repositories/</code><span class="filecard-desc">One test file per repository.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/tests/test_load_cost.py">tests/test_load_cost.py</code><span class="filecard-desc">Canonical cost cases per model.</span></div>
+                <div class="filecard"><code class="fileref" data-path="browser/backend/tests/conftest.py">tests/conftest.py</code><span class="filecard-desc">PG testcontainer, NullPool swap, seed fixtures, ASGI client.</span></div>
+              </div>
+
+              <h3 class="anchor">Frontend — Vitest + jsdom</h3>
+              <figure class="code">
+                <figcaption>from browser/frontend/</figcaption>
+                <pre><code>npm ci
+npm run lint
+npm run test:coverage
+npm run build</code></pre>
+              </figure>
+              <p>Flat <code>{ lines: 100, functions: 100, branches: 100 }</code> gate in <code class="fileref" data-path="browser/frontend/vitest.config.js">vitest.config.js</code>. <code class="fileref" data-path="browser/frontend/src/__tests__/setup.js">setup.js</code> calls <code>cleanup()</code> in <code>afterEach</code> (Vitest doesn't auto-cleanup) and installs a localStorage polyfill for Node 25 compatibility. The <code>../api</code> module and heavy children (Dashboard, KnowledgeGraph, Charts) are mocked in App-level tests to avoid d3/Chart.js failures in jsdom.</p>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== CI -->
+        <section class="doc-section" id="ci">
+          <details>
+            <summary><span class="sec-num">13</span><h2>Build, CI &amp; deployment</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">GitHub Actions (this project is open-source on GitHub — a documented override of the author's GitLab default). Two workflows.</p>
+
+              <h3 class="anchor">ci.yml — six jobs</h3>
+              <figure class="diagram">
+                <div class="mermaid">
+graph LR
+    lb[lint-backend<br/>ruff] --> tb[test-backend<br/>pytest 100%]
+    lf[lint-frontend<br/>eslint]
+    tf[test-frontend<br/>vitest 100%] --> bf[build-frontend<br/>vite]
+    tb --> db[docker-build<br/>multi-stage image]
+    tf --> db
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>graph LR
+    lb[lint-backend ruff] --&gt; tb[test-backend pytest 100%]
+    lf[lint-frontend eslint]
+    tf[test-frontend vitest 100%] --&gt; bf[build-frontend vite]
+    tb --&gt; db[docker-build]
+    tf --&gt; db</code></pre></figure></div>
+                <figcaption>Triggers on push + PR to main/staging/dev + manual dispatch. Per-ref concurrency cancels in-flight runs on the same branch. <code class="fileref" data-path=".github/workflows/ci.yml">.github/workflows/ci.yml</code>.</figcaption>
+              </figure>
+              <p>Notable: <code>test-backend</code> pre-pulls the pgvector image to warm the testcontainer cache, installs <code>libgomp1</code>, and sets <code>TESTCONTAINERS_HOST_OVERRIDE=localhost</code> (the conftest assumes macOS Docker Desktop's <code>host.docker.internal</code>, wrong on Linux runners). <code>docker-build</code> verifies the multi-stage image with GHA layer cache but does not push.</p>
+
+              <h3 class="anchor">release.yml — manual semver bump</h3>
+              <p>A <code>workflow_dispatch</code>-only workflow (gated to <code>main</code>) bumps the version field in <code class="fileref" data-path="browser/frontend/package.json">browser/frontend/package.json</code> — the project's source of truth (the backend <code>pyproject.toml</code> has no <code>[project]</code> block) — then tags and pushes. <strong>Never edit the version field directly.</strong></p>
+
+              <h3 class="anchor">Docker image</h3>
+              <p>Multi-stage (<code class="fileref" data-path="Dockerfile">Dockerfile</code>): <code>node:20-alpine</code> runs <code>npm ci</code> + <code>npm run build</code>; <code>python:3.13-slim</code> installs runtime deps + <code>libgomp1</code>, copies the backend, the converter scripts, and the built <code>dist/</code> into <code>/app/static</code>, then runs uvicorn. A <code class="fileref" data-path=".dockerignore">.dockerignore</code> trims the build context.</p>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== ROADMAP -->
+        <section class="doc-section" id="roadmap">
+          <details>
+            <summary><span class="sec-num">14</span><h2>Roadmap &amp; phase history</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Nine completed phases. The project is feature-frozen; this is history, not a TODO list. Full detail in <code class="fileref" data-path="docs/CONVERSATIONS_MASTER_PLAN.md">docs/CONVERSATIONS_MASTER_PLAN.md</code> §10–11.</p>
+
+              <figure class="diagram">
+                <div class="mermaid">
+gantt
+    title Completed phase migration
+    dateFormat YYYY-MM-DD
+    axisFormat %b
+    section Foundation
+    P0 Scaffolding        :done, 2026-01-01, 7d
+    P1 Data loader        :done, 2026-01-08, 10d
+    section Migration
+    P2 Migrate reads      :done, 2026-01-18, 10d
+    P3 Search upgrade     :done, 2026-01-28, 14d
+    section Features
+    P4 Dashboard          :done, 2026-02-11, 14d
+    P5 Semantic search    :done, 2026-02-25, 14d
+    section Quality
+    P6 Testing and CI     :done, 2026-03-11, 21d
+    P7 OOP and cost audit :done, 2026-04-01, 13d
+    P8 KG wiki            :done, 2026-04-14, 1d
+    P9 Drift remediation  :done, 2026-04-15, 7d
+                </div>
+                <div class="mermaid-fallback"><figure class="code"><figcaption>diagram source · mermaid</figcaption><pre><code>gantt
+    title Completed phase migration
+    dateFormat YYYY-MM-DD
+    P0 Scaffolding :done, 2026-01-01, 7d
+    P1 Data loader :done, 2026-01-08, 10d
+    P2 Migrate reads :done, 2026-01-18, 10d
+    P3 Search upgrade :done, 2026-01-28, 14d
+    P4 Dashboard :done, 2026-02-11, 14d
+    P5 Semantic search :done, 2026-02-25, 14d
+    P6 Testing and CI :done, 2026-03-11, 21d
+    P7 OOP and cost :done, 2026-04-01, 13d
+    P8 KG wiki :done, 2026-04-14, 1d
+    P9 Drift :done, 2026-04-15, 7d</code></pre></figure></div>
+                <figcaption>Each phase produced a working system. P0–P2 were invisible to the frontend; P3 was the first user-visible improvement.</figcaption>
+              </figure>
+
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>Phase</th><th>What shipped</th></tr></thead>
+                <tbody>
+                  <tr><td>0 — Scaffolding</td><td>Postgres + pgvector in compose, SQLAlchemy models, Pydantic schemas, modular routes.</td></tr>
+                  <tr><td>1 — Data loader</td><td><code>load.py</code> populates Postgres; heuristic topics + classification; Graphify import.</td></tr>
+                  <tr><td>2 — Migrate reads</td><td>All reads from Postgres; tsvector search; hidden state in DB columns.</td></tr>
+                  <tr><td>3 — Search upgrade</td><td>Session-level results, metadata filter parsing, filter chips, related sessions.</td></tr>
+                  <tr><td>4 — Dashboard</td><td>6 charts + heatmap + anomalies + full-screen knowledge graph + extraction pipeline.</td></tr>
+                  <tr><td>5 — Semantic search</td><td>ONNX embeddings, RRF hybrid retrieval, community re-ranking, mode badges.</td></tr>
+                  <tr><td>6 — Testing &amp; CI</td><td>Dead-code removal, pytest + vitest suites, GitHub Actions CI, ruff clean.</td></tr>
+                  <tr><td>7 — OOP + cost audit</td><td>Service/repository layers, latent-bug fixes, App.jsx decomposition, 100% backend coverage, cost-breakdown UI.</td></tr>
+                  <tr><td>8 — KG wiki</td><td>In-tab wiki pane, <code>/api/graph/wiki/*</code>, <code>[[WikiLink]]</code> navigation, path-traversal guard.</td></tr>
+                  <tr><td>9 — Drift remediation</td><td>Env-substituted creds, DOMPurify swap, flat 100/100/100 frontend gate, doc refresh.</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== GLOSSARY -->
+        <section class="doc-section" id="glossary">
+          <details>
+            <summary><span class="sec-num">15</span><h2>Domain glossary</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">Terms a newcomer needs to read the code.</p>
+              <dl class="doc-dl">
+                <dt>Session</dt><dd>One conversation. The atomic unit of search, embedding, ranking, and cost. Keyed by <code>conversation_id</code> (or, for standalone segments, the segment's own id).</dd>
+                <dt>Segment</dt><dd>One user request + its following assistant/tool content, split on the <code>&gt;&gt;&gt;USER_REQUEST&lt;&lt;&lt;</code> delimiter.</dd>
+                <dt>Provider</dt><dd><code>claude</code> or <code>codex</code> — the CLI the transcript came from.</dd>
+                <dt>RRF (Reciprocal Rank Fusion)</dt><dd>Merges the keyword and vector ranked lists by rank position (<code>1/(k+rank)</code>, k=60) without normalizing incompatible score scales.</dd>
+                <dt>tsvector</dt><dd>Postgres full-text search type. <code>search_vector</code> columns are generated from text; GIN-indexed for keyword ranking via <code>ts_rank</code>.</dd>
+                <dt>pgvector / HNSW</dt><dd>The Postgres vector extension + the approximate-nearest-neighbor index used for cosine-similarity search over session embeddings.</dd>
+                <dt>Graphify (graphifyy)</dt><dd>The optional sidecar that turns Markdown into a concept graph with Leiden community detection and a generated wiki.</dd>
+                <dt>God node</dt><dd>A highest-degree concept in the graph. The top-15 get their own wiki article.</dd>
+                <dt>Community</dt><dd>A Leiden cluster of related concepts. Drives node coloring, wiki community articles, and the optional search re-ranking boost.</dd>
+                <dt>cache_read / cache_creation tokens</dt><dd>Anthropic prompt-caching token buckets. Cache-read is billed at 10% of input price; cache-creation at 125% (5-minute TTL) in this project's formula.</dd>
+                <dt>Cost breakdown</dt><dd>The 4-way split — input / output / cache-read / cache-write USD — that the dashboard and per-session views render.</dd>
+                <dt>Watcher</dt><dd>A host-side background process the launcher spawns to call the local <code>claude</code> CLI (one for summaries, one for graph extraction).</dd>
+              </dl>
+            </div>
+          </details>
+        </section>
+
+        <!-- ===================================================== FILE INDEX -->
+        <section class="doc-section" id="file-index">
+          <details>
+            <summary><span class="sec-num">16</span><h2>Key files index</h2><span class="chevron"></span></summary>
+            <div class="sec-body">
+              <p class="lead-in">A single jump-off map of the most important files.</p>
+              <div class="table-wrap"><table class="doc-table">
+                <thead><tr><th>File</th><th>What it's for</th></tr></thead>
+                <tbody>
+                  <tr><td><code class="fileref" data-path="convert_claude_jsonl_to_md.py">convert_claude_jsonl_to_md.py</code></td><td>The Markdown format contract — Claude JSONL → .md.</td></tr>
+                  <tr><td><code class="fileref" data-path="convert_codex_sessions.py">convert_codex_sessions.py</code></td><td>Codex sessions → .md.</td></tr>
+                  <tr><td><code class="fileref" data-path="convert_export.py">convert_export.py</code></td><td>Cross-platform export orchestrator.</td></tr>
+                  <tr><td><code class="fileref" data-path="graph_extract.py">graph_extract.py</code></td><td>Concept-graph extraction + wiki generation.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/app.py">browser/backend/app.py</code></td><td>FastAPI app, lifespan, router registration, SPA serving.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/load.py">browser/backend/load.py</code></td><td>Data loader + cost formula + embedding + cost recompute.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/models.py">browser/backend/models.py</code></td><td>The 7-table schema (source of truth).</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/schemas.py">browser/backend/schemas.py</code></td><td>Pydantic API contracts.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/db.py">browser/backend/db.py</code></td><td>Engine, session maker, DI providers.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/services/search_service.py">services/search_service.py</code></td><td>Hybrid retrieval + ranking.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/services/dashboard_service.py">services/dashboard_service.py</code></td><td>All dashboard aggregations + cost breakdown.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/backend/services/graph_service.py">services/graph_service.py</code></td><td>Graph file protocol + wiki endpoints.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/frontend/src/App.jsx">browser/frontend/src/App.jsx</code></td><td>Frontend integration shell.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/frontend/src/api.js">browser/frontend/src/api.js</code></td><td>Per-endpoint fetch wrappers.</td></tr>
+                  <tr><td><code class="fileref" data-path="browser/frontend/src/utils.js">browser/frontend/src/utils.js</code></td><td>Markdown renderer + sanitizer + formatters.</td></tr>
+                  <tr><td><code class="fileref" data-path="docker-compose.yml">docker-compose.yml</code></td><td>postgres + llm-browser services, mounts, env.</td></tr>
+                  <tr><td><code class="fileref" data-path="Dockerfile">Dockerfile</code></td><td>Multi-stage build.</td></tr>
+                  <tr><td><code class="fileref" data-path="export_service.sh">export_service.sh</code></td><td>Launcher + watchers + shutdown loop.</td></tr>
+                  <tr><td><code class="fileref" data-path="docs/CONVERSATIONS_MASTER_PLAN.md">docs/CONVERSATIONS_MASTER_PLAN.md</code></td><td>Authoritative spec + phase history + QA plan.</td></tr>
+                  <tr><td><code class="fileref" data-path="DESIGN.md">DESIGN.md</code></td><td>Product thesis + design + anti-bloat guardrails.</td></tr>
+                  <tr><td><code class="fileref" data-path="docs/status.md">docs/status.md</code></td><td>Current state.</td></tr>
+                  <tr><td><code class="fileref" data-path="docs/versions.md">docs/versions.md</code></td><td>Semver changelog.</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </details>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <button id="backTop" title="Back to top"><span class="ico"></span></button>
+
+  <footer class="doc-footer">
+    <p>Human-facing documentation for <strong>llm-cli-conversations</strong> · generated 2026-06-07.
+    Styling and behavior are inlined directly into this file — it is fully self-contained and needs no external assets. Re-open after editing source to keep this guide in sync.</p>
+  </footer>
+
+  <script>
+/* ============================================================================
+   doc.js — Shared behavior for every project's PROJECT_DOCUMENTATION.html.
+   Inlined directly into this PROJECT_DOCUMENTATION.html (self-contained; no external script).
+   Responsibilities:
+     - theme (light/dark) with persistence
+     - auto-built table of contents from <section class="doc-section"> + h3 anchors
+     - scroll-spy active highlighting
+     - live full-text section filter (search box)
+     - expand-all / collapse-all
+     - click-to-copy file references and code blocks
+     - scroll progress bar + back-to-top
+     - mermaid diagram rendering (CDN) with graceful source fallback
+     - print = expand everything
+   No build step, no framework. Pure DOM.
+   ============================================================================ */
+(function () {
+  "use strict";
+
+  var THEME_KEY = "projDocTheme";
+
+  /* ---- theme (apply ASAP to avoid flash) ---- */
+  function preferredTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    var btn = document.getElementById("themeToggle");
+    if (btn) {
+      var ico = btn.querySelector(".ico");
+      if (ico) ico.style.webkitMaskImage = ico.style.maskImage = "var(--icon-" + (t === "dark" ? "sun" : "moon") + ")";
+      btn.setAttribute("aria-label", t === "dark" ? "Switch to light theme" : "Switch to dark theme");
+    }
+  }
+  applyTheme(preferredTheme());
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+
+  function init() {
+    applyTheme(preferredTheme());
+    buildTOC();
+    wireControls();
+    wireFileRefs();
+    wireCodeCopy();
+    wireScrollProgress();
+    wireBackToTop();
+    wireScrollSpy();
+    wirePrint();
+    initMermaid();
+    handleInitialHash();
+  }
+
+  /* ---- slugify ---- */
+  function slug(s) {
+    return s.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").slice(0, 60);
+  }
+
+  /* ---- TOC ---- */
+  function buildTOC() {
+    var toc = document.getElementById("docToc");
+    if (!toc) return;
+    var sections = Array.prototype.slice.call(document.querySelectorAll("main .doc-section"));
+    if (!sections.length) return;
+    var ul = document.createElement("ul");
+    var n = 0;
+    sections.forEach(function (sec) {
+      n++;
+      if (!sec.id) sec.id = "sec-" + n;
+      var h2 = sec.querySelector("summary h2");
+      var title = h2 ? h2.textContent.trim() : ("Section " + n);
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = "#" + sec.id;
+      a.dataset.target = sec.id;
+      a.innerHTML = '<span class="toc-num">' + n + "</span>" + escapeHTML(title);
+      li.appendChild(a);
+      ul.appendChild(li);
+
+      // nested h3 anchors marked with class "anchor"
+      var subs = sec.querySelectorAll("h3.anchor");
+      Array.prototype.forEach.call(subs, function (h3) {
+        if (!h3.id) h3.id = sec.id + "-" + slug(h3.textContent);
+        var sli = document.createElement("li");
+        var sa = document.createElement("a");
+        sa.href = "#" + h3.id;
+        sa.className = "sub";
+        sa.dataset.target = h3.id;
+        sa.textContent = h3.textContent.trim();
+        sli.appendChild(sa);
+        ul.appendChild(sli);
+      });
+    });
+    toc.appendChild(ul);
+
+    // smooth scroll with header offset, and open target section
+    toc.addEventListener("click", function (e) {
+      var a = e.target.closest("a");
+      if (!a) return;
+      e.preventDefault();
+      var id = a.dataset.target;
+      revealAndScroll(id);
+      history.replaceState(null, "", "#" + id);
+    });
+  }
+
+  function revealAndScroll(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    // open the enclosing section + any parent <details>
+    var d = el.closest("details");
+    while (d) { d.open = true; d = d.parentElement ? d.parentElement.closest("details") : null; }
+    var sec = el.closest(".doc-section") || el;
+    if (sec.querySelector) {
+      var det = sec.querySelector(":scope > details");
+      if (det) det.open = true;
+    }
+    setTimeout(function () {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 30);
+  }
+
+  /* ---- controls (expand/collapse/theme/print/search) ---- */
+  function wireControls() {
+    var expand = document.getElementById("expandAll");
+    var collapse = document.getElementById("collapseAll");
+    var theme = document.getElementById("themeToggle");
+    var print = document.getElementById("printBtn");
+    var search = document.getElementById("docSearch");
+
+    if (expand) expand.addEventListener("click", function () { allDetails().forEach(function (d) { d.open = true; }); });
+    if (collapse) collapse.addEventListener("click", function () {
+      document.querySelectorAll("main .doc-section > details").forEach(function (d) { d.open = false; });
+      document.querySelectorAll("main details.sub").forEach(function (d) { d.open = false; });
+    });
+    if (theme) theme.addEventListener("click", function () {
+      var cur = document.documentElement.getAttribute("data-theme");
+      var next = cur === "dark" ? "light" : "dark";
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+      applyTheme(next);
+    });
+    if (print) print.addEventListener("click", function () { window.print(); });
+    if (search) wireSearch(search);
+  }
+
+  function allDetails() { return Array.prototype.slice.call(document.querySelectorAll("main details")); }
+
+  /* ---- search / filter ---- */
+  function wireSearch(input) {
+    var countEl = document.querySelector(".search-count");
+    var sections = Array.prototype.slice.call(document.querySelectorAll("main .doc-section"));
+    var tocLinks = Array.prototype.slice.call(document.querySelectorAll("#docToc a"));
+    var debounce;
+    input.addEventListener("input", function () {
+      clearTimeout(debounce);
+      debounce = setTimeout(run, 120);
+    });
+    input.addEventListener("keydown", function (e) { if (e.key === "Escape") { input.value = ""; run(); input.blur(); } });
+
+    function run() {
+      var q = input.value.trim().toLowerCase();
+      var shown = 0;
+      if (!q) {
+        sections.forEach(function (s) { s.classList.remove("filtered-out"); });
+        tocLinks.forEach(function (a) { a.classList.remove("filtered-out"); });
+        if (countEl) countEl.textContent = "";
+        return;
+      }
+      sections.forEach(function (s) {
+        var match = s.textContent.toLowerCase().indexOf(q) !== -1;
+        s.classList.toggle("filtered-out", !match);
+        if (match) {
+          shown++;
+          var det = s.querySelector(":scope > details");
+          if (det) det.open = true;
+        }
+        var link = document.querySelector('#docToc a[data-target="' + s.id + '"]');
+        if (link) link.classList.toggle("filtered-out", !match);
+      });
+      if (countEl) countEl.textContent = shown + (shown === 1 ? " match" : " matches");
+    }
+  }
+
+  /* ---- file references: click to copy path ---- */
+  function wireFileRefs() {
+    document.body.addEventListener("click", function (e) {
+      var ref = e.target.closest("code.fileref");
+      if (!ref) return;
+      var path = ref.getAttribute("data-path") || ref.textContent.trim();
+      copyText(path).then(function () {
+        var old = ref.textContent;
+        ref.classList.add("copied");
+        ref.textContent = "copied: " + path;
+        setTimeout(function () { ref.textContent = old; ref.classList.remove("copied"); }, 1100);
+      });
+    });
+  }
+
+  /* ---- code blocks: copy button ---- */
+  function wireCodeCopy() {
+    document.querySelectorAll("figure.code").forEach(function (fig) {
+      var pre = fig.querySelector("pre");
+      if (!pre) return;
+      var btn = document.createElement("button");
+      btn.className = "btn code-copy";
+      btn.innerHTML = '<span class="ico" style="-webkit-mask:var(--icon-copy) center/contain no-repeat;mask:var(--icon-copy) center/contain no-repeat"></span><span class="label">Copy</span>';
+      btn.addEventListener("click", function () {
+        copyText(pre.innerText).then(function () {
+          var l = btn.querySelector(".label");
+          if (l) { l.textContent = "Copied"; setTimeout(function () { l.textContent = "Copy"; }, 1100); }
+        });
+      });
+      fig.appendChild(btn);
+    });
+  }
+
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).catch(fallback);
+    return fallback();
+    function fallback() {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (e) {}
+      return Promise.resolve();
+    }
+  }
+
+  /* ---- scroll progress ---- */
+  function wireScrollProgress() {
+    var bar = document.getElementById("scrollProgress");
+    if (!bar) return;
+    function upd() {
+      var h = document.documentElement;
+      var max = h.scrollHeight - h.clientHeight;
+      var pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+      bar.style.width = pct + "%";
+    }
+    window.addEventListener("scroll", upd, { passive: true });
+    window.addEventListener("resize", upd);
+    upd();
+  }
+
+  /* ---- back to top ---- */
+  function wireBackToTop() {
+    var b = document.getElementById("backTop");
+    if (!b) return;
+    b.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: "smooth" }); });
+    window.addEventListener("scroll", function () {
+      b.classList.toggle("show", window.scrollY > 600);
+    }, { passive: true });
+  }
+
+  /* ---- scroll-spy ---- */
+  function wireScrollSpy() {
+    var links = {};
+    document.querySelectorAll("#docToc a").forEach(function (a) { links[a.dataset.target] = a; });
+    var targets = Array.prototype.slice.call(document.querySelectorAll("main .doc-section, main h3.anchor"));
+    if (!targets.length || !("IntersectionObserver" in window)) return;
+    var visible = new Set();
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) visible.add(en.target.id); else visible.delete(en.target.id);
+      });
+      var best = null, bestTop = Infinity;
+      visible.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var top = el.getBoundingClientRect().top;
+        if (top < bestTop) { bestTop = top; best = id; }
+      });
+      Object.keys(links).forEach(function (id) { links[id].classList.toggle("active", id === best); });
+    }, { rootMargin: "-70px 0px -65% 0px", threshold: 0 });
+    targets.forEach(function (t) { if (t.id) obs.observe(t); });
+  }
+
+  /* ---- print = expand all ---- */
+  function wirePrint() {
+    window.addEventListener("beforeprint", function () { allDetails().forEach(function (d) { d.open = true; }); });
+  }
+
+  /* ---- initial hash ---- */
+  function handleInitialHash() {
+    if (location.hash.length > 1) {
+      var id = decodeURIComponent(location.hash.slice(1));
+      setTimeout(function () { revealAndScroll(id); }, 60);
+    }
+  }
+
+  /* ---- mermaid (CDN, graceful fallback to source) ---- */
+  function initMermaid() {
+    var blocks = document.querySelectorAll(".mermaid");
+    if (!blocks.length) return;
+    // stash source for fallback
+    blocks.forEach(function (b) { if (!b.dataset.src) b.dataset.src = b.textContent; });
+    var theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+    var s = document.createElement("script");
+    s.type = "module";
+    s.textContent =
+      'import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";' +
+      'mermaid.initialize({ startOnLoad: false, theme: "' + theme + '", securityLevel: "loose", flowchart:{useMaxWidth:true}, themeVariables:{ fontFamily: "inherit" } });' +
+      'try { await mermaid.run({ querySelector: ".mermaid" }); }' +
+      'catch (e) { document.querySelectorAll(".mermaid").forEach(function(b){ var f=b.closest("figure.diagram"); if(f) f.classList.add("failed"); }); }';
+    s.onerror = mermaidFail;
+    document.body.appendChild(s);
+    // safety net: if CDN blocked, reveal fallbacks after a delay
+    setTimeout(function () {
+      document.querySelectorAll(".mermaid").forEach(function (b) {
+        if (!b.querySelector("svg")) { var f = b.closest("figure.diagram"); if (f) f.classList.add("failed"); }
+      });
+    }, 4000);
+  }
+  function mermaidFail() {
+    document.querySelectorAll("figure.diagram").forEach(function (f) { f.classList.add("failed"); });
+  }
+
+  function escapeHTML(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+})();
+
+  </script>
+</body>
+</html>

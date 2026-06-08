@@ -1,0 +1,12 @@
+# Cross-OS line-ending normalization for shared scripts (macOS <-> Windows sync).
+# Hook scripts (.cjs) and shell scripts MUST stay LF; Windows batch/PowerShell stay CRLF.
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.js  text eol=lf
+*.ts  text eol=lf
+*.tsx text eol=lf
+*.jsx text eol=lf
+*.sh  text eol=lf
+*.py  text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

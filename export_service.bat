@@ -7,7 +7,7 @@ REM ============================================================
 set "SERVICE_PREFIX=llm-cli-conversation-export"
 set "COMPOSE_FILE=docker-compose.yml"
 if "%PORT%"=="" set "PORT=5050"
-if "%POSTGRES_PORT%"=="" set "POSTGRES_PORT=5432"
+if "%POSTGRES_PORT%"=="" set "POSTGRES_PORT=5540"
 if "%SUMMARY_MODEL%"=="" set "SUMMARY_MODEL=claude-sonnet-4-6"
 if "%GRAPHIFY_MODEL%"=="" set "GRAPHIFY_MODEL=claude-sonnet-4-6"
 

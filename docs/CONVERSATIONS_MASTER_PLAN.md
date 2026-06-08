@@ -1232,7 +1232,7 @@ Shipped state:
 
 #### 9.1 Infrastructure: env-substitute Postgres creds, commit `.env.example` ✅
 
-- `docker-compose.yml` lines 6-8 replaced with `${POSTGRES_USER:-conversations}` / `${POSTGRES_PASSWORD:-conversations}` / `${POSTGRES_DB:-conversations}`. Line 53 rewritten to `DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-conversations}:${POSTGRES_PASSWORD:-conversations}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-conversations}`. New `CORS_ORIGINS=${CORS_ORIGINS:-...}` env entry on the `llm-browser` service. Healthcheck reads `pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"` (double-`$` escapes compose substitution so the container shell sees the env var).
+- `docker-compose.yml` lines 6-8 replaced with `${POSTGRES_USER:-conversations}` / `${POSTGRES_PASSWORD:-conversations}` / `${POSTGRES_DB:-conversations}`. Line 53 rewritten to `DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-conversations}:${POSTGRES_PASSWORD:-conversations}@postgres:${POSTGRES_PORT:-5540}/${POSTGRES_DB:-conversations}`. New `CORS_ORIGINS=${CORS_ORIGINS:-...}` env entry on the `llm-browser` service. Healthcheck reads `pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"` (double-`$` escapes compose substitution so the container shell sees the env var).
 - New `.env.example` committed at repo root with every overridable value annotated: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`, `PORT`, `CORS_ORIGINS`, `CLAUDE_PROJECTS_DIR`, `CODEX_SESSIONS_DIR`. `.env` is already gitignored per pre-existing `.gitignore:13-14`.
 
 #### 9.2 Backend drift: CORS env parser + DATABASE_URL constant + test helper rewrite ✅

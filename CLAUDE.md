@@ -1,5 +1,7 @@
 # Conversations — LLM CLI Conversation Export
 
+<mandatory_workflow>
+
 > **MANDATORY WORKFLOW: READ THIS ENTIRE FILE BEFORE EVERY CHANGE.** Every time. No skimming, no assuming prior-session context carries over — it does not.
 >
 > **Why:** This project spans multiple sessions and months of development. Skipping the re-read produces decisions that contradict the architecture, duplicate existing patterns, break data contracts, or introduce tech debt that compounds.
@@ -11,6 +13,10 @@
 > 4. Read `docs/versions.md` — recent version history.
 > 5. Read the source files you plan to modify — understand existing patterns first.
 > 6. Then implement, following the rules and contracts defined here.
+
+</mandatory_workflow>
+
+<critical_context>
 
 ## 0. Critical Context
 
@@ -30,6 +36,10 @@
 - The cost formula in `browser/backend/load.py::estimate_cost_breakdown` (Phase 7.5: `input + output + 0.10 × cache_read + 1.25 × cache_creation`). See master plan §5.
 - The search response shape (`SessionSearchResult` Pydantic model) — the frontend relies on it verbatim.
 
+</critical_context>
+
+<project_identity>
+
 ## What This Project Is
 
 A personal observability platform and recall system for Claude CLI and Codex CLI usage. Two pillars:
@@ -38,6 +48,10 @@ A personal observability platform and recall system for Claude CLI and Codex CLI
 2. **KPI dashboard** — understand LLM usage patterns, cost, and efficiency
 
 This is NOT a conversation browser or archive museum. See @DESIGN.md for the full product direction.
+
+</project_identity>
+
+<architecture>
 
 ## Architecture
 
@@ -95,6 +109,10 @@ Raw JSONL (Claude/Codex CLI)
 8. `load.py` merges parser + JSONL data and upserts into Postgres (sessions, segments, tool_calls, session_topics)
 9. `topics.py` + `classify.py` run heuristic topic extraction and session type classification
 10. `import_graph.py` optionally loads Graphify concept graph when `graphify-out/graph.json` exists
+
+</architecture>
+
+<status>
 
 ## Current State
 
@@ -154,6 +172,10 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 - [ ] Cost calculation audit + UI breakdown (Phase 7.5 — cache_write premium, 4-way breakdown, Top-5 widget)
 - [ ] Final documentation pass (Phase 7.6 — `docs/status.md`, `docs/versions.md`, README updates)
 
+</status>
+
+<commands>
+
 ## Development
 
 ```bash
@@ -173,6 +195,10 @@ docker compose up --build             # localhost:5050
 cd browser/frontend && npm run build
 ```
 
+</commands>
+
+<coding_standards>
+
 ## Code Conventions
 
 - Python: no type stubs, no docstrings unless logic is non-obvious
@@ -181,6 +207,10 @@ cd browser/frontend && npm run build
 - No external charting library yet — current charts are custom SVG. Dashboard v1 will add Chart.js.
 - Segment IDs are SHA256(source_file:segment_index), truncated to 16 chars
 - Token estimates: currently char_count // 4 (rough). v2 uses actual token counts from JSONL `message.usage` fields.
+
+</coding_standards>
+
+<pitfalls>
 
 ## Anti-Patterns to Avoid
 
@@ -191,6 +221,10 @@ cd browser/frontend && npm run build
 - Do not add per-turn cost attribution — session-level estimates are sufficient
 - Every feature must justify itself as: faster recall OR faster pattern understanding
 
+</pitfalls>
+
+<graphify>
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.
@@ -199,3 +233,5 @@ Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+
+</graphify>
