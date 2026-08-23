@@ -337,6 +337,22 @@ Pricing table lives in the same module (`MODEL_PRICING`): opus-4-6 $15/$75, sonn
 - **Displayed cost values come from the recomputed breakdown**, not `SUM(estimated_cost)` — the `DashboardService._compute_cost_breakdown()` helper groups by model at query time and applies pricing via `estimate_cost_breakdown()` per group. This guarantees `summary.total_cost == sum(cost_breakdown)` to within rounding and prevents the penny-drift trap that would appear if the two were computed from different sources.
 - **Historical rows are auto-recomputed on app startup** via `load.recompute_session_costs()` called from the FastAPI lifespan after `load_all()`. Idempotent: only issues UPDATE for rows where the stored value drifted by more than $0.0001 from the recomputed one. This means shipping a formula change (e.g., the 1.25× premium added in Phase 7.5) updates every existing row automatically without requiring the user to reload.
 
+### Security — SAST stage & injection safety (cross-phase)
+
+Implements global CLAUDE.md §19. Full boundary inventory, tool list and local commands live in project `CLAUDE.md` `<security>` — this section records the decisions, not the table.
+
+- **`sast` is a mandatory pipeline stage from the first pipeline onward.** `ci.yml` gains a `sast` job between the `lint-*` jobs and the `test-*` jobs (`test-*` take `needs: sast`), failing on any HIGH/CRITICAL finding; MEDIUM findings are triaged with a written justification. No `continue-on-error`. Every phase gate below carries this as a criterion; Phase 6.7 (the phase that established CI) carried the wiring task. **Wired (v2.2.2):** `sast` job with `needs: [lint-backend, lint-frontend]`, `test-*` with `needs: sast`, Trivy attached to `docker-build`.
+- **Tool set (GitHub wiring, as implemented):** Semgrep (`--config auto` + `p/owasp-top-ten`, `p/python`, `p/typescript`, `p/react`, `p/docker`, `--severity ERROR`) with SARIF upload + CodeQL (`python`, `javascript-typescript`) in `sast`; ruff `S` rules folded into `lint-backend` (`select` → `["E","F","I","N","UP","ANN","S"]`); `eslint-plugin-security` + `eslint-plugin-no-unsanitized` folded into `lint-frontend`; `pip-audit` + `npm audit --audit-level=high`; `gitleaks`; Trivy (`HIGH,CRITICAL`, exit-code 1) in `docker-build`.
+- **Injection-safety principles applied to this codebase:**
+  - *SQL* — SQLAlchemy Core/ORM bound parameters only; `text()` restricted to literal sort/group aliases and `:named` binds (Phase 9.2 removed the last f-string SQL). Request values never choose a column or table.
+  - *Path traversal* — every request-derived file name resolves under its base directory (`GraphService._safe_wiki_path` for `graphify-out/wiki/`, Phase 8.1); the summary store (`SUMMARIES_DIR/{key}.*`) is confined by `SummaryService::_summary_file` — key-format validation (`^[A-Za-z0-9][A-Za-z0-9_\-]*$`) plus `resolve()` + `relative_to(SUMMARIES_DIR)`, `InvalidSummaryKeyError` → 404 (v2.2.2).
+  - *Command* — `subprocess.run([...])` list form only (`/api/update` converters, `graph_extract.py`); `/api/dashboard/graph/generate` writes a sentinel file, never an argument.
+  - *Prompt injection* — transcripts fed to `claude -p` (summaries, concept extraction) contain tool output and pasted web text and are treated as data: instruction lives in the system/positional prompt, content arrives on stdin, output is consumed only as text or schema-normalized JSON (`parse_graph_json` + `FILE_TYPE_ALIASES`) and never selects a path, tool or command. Tool access for the subprocess is to be pinned off explicitly.
+  - *XSS* — the three `dangerouslySetInnerHTML` sites render `renderMarkdown()` → DOMPurify allowlist output only (Phase 9.3); CSP + `nosniff` + `X-Frame-Options` + `Referrer-Policy` headers are to be emitted by `app.py` middleware since FastAPI serves the SPA directly.
+  - *Secrets / CORS* — credentials via `${VAR:-default}` + `.env` (Phase 9.1); `CORS_ORIGINS` explicit allowlist (Phase 9.2), never `*`.
+  - *Deserialization / resource* — `json.loads` only across JSONL, Markdown and Graphify loaders; per-file size bounds and query length/limit caps are required at the loader and route boundaries.
+- **Why not defer to a "security phase":** the project is feature-complete; the remaining risk is regression. A scanner in the pipeline plus a documented boundary table is the cheapest way to keep the v2.1.1 posture from drifting as small fixes land.
+
 ### What we explicitly rejected
 - **Django / Tortoise / Peewee** — Django ORM is too heavyweight, others lack async maturity
 - **Flask** — no async, no native WebSocket
@@ -734,6 +750,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 **Deliverable:** Postgres running, schema created, backend modular, connection pool exists. Zero behavior changes. Frontend untouched.
 
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
+
 ---
 
 ### Phase 1 — Data Loader ✅
@@ -754,6 +774,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 - Tool calls are delete-and-reinsert per session (no natural unique key).
 
 **Deliverable:** Postgres has all the data. Queryable with `psql`. App still serves from in-memory index. Nothing broken.
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 
@@ -778,6 +802,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 
 **Deliverable:** All API reads from Postgres. Frontend unchanged. Search ranked via tsvector. Hidden state in database.
 
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
+
 ---
 
 ### Phase 3 — Search Upgrade ✅
@@ -799,6 +827,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 - Snippet extraction centers a ~250-char window around the first query term, stripping markdown noise.
 
 **Deliverable:** Ranked session-level search with metadata filters. Session cards, filter chips with autocomplete, click-to-navigate. Related sessions endpoint.
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 
@@ -835,6 +867,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 **New dependencies:** `chart.js`, `react-chartjs-2`, `d3` in frontend.
 
 **Deliverable:** Full KPI dashboard with 6 chart types + heatmap + anomaly table + global filters. Full-screen knowledge graph with interactive force settings. Automated concept extraction pipeline.
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 
@@ -879,6 +915,10 @@ Phased refactoring from in-memory index to PostgreSQL. Each phase produces a wor
 - Community re-ranking uses `dict[str, float]` for additive boosts before final sort
 
 **Deliverable:** Hybrid semantic + keyword search. Graceful degradation across all failure modes. Two-part UI indicator.
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 
@@ -945,6 +985,7 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 
 - **`ci.yml`** — triggered on `push` to `main` and `pull_request` to `main`. Five jobs in dependency order:
   1. `lint-backend` — `ruff check .` against `browser/backend/` (config in `pyproject.toml`)
+  1a. `sast` — wired in v2.2.2 (see §5 Security). `needs: [lint-backend, lint-frontend]`; CodeQL (`python`, `javascript-typescript`) + Semgrep (SARIF upload, fail-on-findings step), `gitleaks-action`, `pip-audit -r browser/backend/requirements.txt`, `npm audit --audit-level=high`; fails on HIGH/CRITICAL. `test-backend` and `test-frontend` take `needs: sast`. `docker-build` loads the image and runs `aquasecurity/trivy-action` (`HIGH,CRITICAL`, exit-code 1).
   2. `test-backend` — `needs: lint-backend`. Sets `TESTCONTAINERS_RYUK_DISABLED=true` and `TESTCONTAINERS_HOST_OVERRIDE=localhost` (the macOS-Docker-Desktop host override in `conftest.py` would otherwise misroute on Linux). Pre-pulls `pgvector/pgvector:pg16` to warm the testcontainer cache, installs `libgomp1` for onnxruntime, then runs `pytest --cov --cov-report=xml --cov-fail-under=70`. The 70% gate matches the 6.5 floor (load.py at ~76%); routes register lower because pytest-cov + httpx ASGITransport doesn't trace lines executed inside the ASGI task — the integration tests prove handlers ran by asserting real DB state, but coverage tooling can't see it. Ratchet up in Phase 7 once routes become thin handlers calling extracted services.
   3. `test-frontend` — `npm ci && npm run test:coverage`. Per-file thresholds enforced via `vitest.config.js` `coverage.thresholds`: utils.js (lines 95 / branches 85 / functions 100), SearchResults.jsx (100/95/100), FilterChips.jsx (95/85/100), App.jsx (70/65/50). Untested files (Dashboard, ConceptGraph, Charts, etc.) are present in the report but not gated — they gain entries in Phase 7 as components get extracted and tested.
   4. `build-frontend` — `needs: test-frontend`. Runs `npm run build` to verify the Vite production bundle compiles.
@@ -959,6 +1000,8 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 **What CI does NOT yet enforce (tracked for Phase 7):** route module coverage (currently low for the reason above), the four unreachable defensive branches in utils.js + FilterChips.jsx (flagged in 6.6), and the two latent backend bugs in routes/segments.py (`func.literal` and date-range cast — flagged in 6.5 as `xfail(strict=True)`; will flip to XPASS when Phase 7 fixes them, forcing the xfail decorators to be removed).
 
 **Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, modified `browser/frontend/vitest.config.js` (added `coverage.thresholds` block).
+
+**Closed task (6.7, security — landed in v2.2.2):** `sast` stage wired (CodeQL + Semgrep + `pip-audit` + `npm audit` + `gitleaks`; Trivy in `docker-build`); ruff `S` added to `pyproject.toml` select (`S101` ignored in tests); `eslint-plugin-security` + `eslint-plugin-no-unsanitized` recommended configs registered in `eslint.config.js`. Gate: zero HIGH/CRITICAL findings.
 
 **Post-6.7 hardening pass (same phase, follow-up):**
 - **Ruff cleanup**: the initial 6.7 push surfaced 272 ruff errors against `browser/backend/`. 229 auto-fixed (UP045 PEP-604 Optional, F401 unused imports, I001 import order, UP017 datetime.UTC). The remaining 52 type-annotation errors (ANN201/ANN202/ANN001) were closed by adding return types to all FastAPI route handlers and private SQL-stmt helpers. E402 was resolved by relocating the `_log()` helper in `app.py` and `load.py` to after all imports. E501 + F841 fixed by line-wrap and unused-var deletion. Final state: `ruff check .` exits 0.
@@ -975,6 +1018,10 @@ This project is intentionally on **GitHub** (public, open-source) rather than th
 CI must be green before Phase 7 begins — the refactor needs both the test suite and the automated gate. **Phase 6 is now complete and Phase 7 inherits a working CI pipeline.**
 
 **Deliverable (Phase 6):** Dead code removed. 333 backend pytest tests + 104 frontend vitest tests, all green. Ruff clean. GitHub Actions `ci.yml` (push + PR on main/staging/dev + manual dispatch) running lint/test/coverage-gate/build/docker-build. `release.yml` for manual semver bumps. Per-file coverage thresholds enforced. **Phase 6 is the safety net. Phase 7 is the restructure.**
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 
@@ -1127,6 +1174,10 @@ Two gaps in the current formula, both of which cause UNDER-estimation (not infla
 
 **Deliverable (Phase 7 / project):** No legacy code. OOP architecture with service/repository layers. Pydantic response models on every route. ESLint enforcing frontend style. Backend coverage at 100% lines + branches + functions. Frontend decomposed with per-component test coverage (100% lines, 96% branches, 97% functions). Two Phase 6.5-flagged bugs fixed. Cost calculations audited and UI breakdown added. Documentation reflecting final architecture. **v2.0.0 shipped 2026-04-14.**
 
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
+
 ---
 
 ### Phase 8 — Knowledge Graph wiki integration ✅
@@ -1216,6 +1267,10 @@ Shipped state:
 - ✅ Degraded state (missing wiki dir) — `load_wiki_index` and `resolve_wiki_slug` both return `None` cleanly; routes map to 404; `openByConcept` silently no-ops so the pane stays closed; the KG header's existing Regenerate button re-runs extraction and produces `wiki/`.
 - ✅ Backend coverage at 100% lines + branches + functions. Frontend at 100% lines; 96.3% branches / 97.4% functions globally with every new module at 100/100/100.
 
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
+
 ---
 
 ### Phase 9 — Drift remediation & full coverage push ✅
@@ -1293,6 +1348,10 @@ Took the pragmatic path over the full 9-component decomposition — extract pure
 - ✅ Frontend coverage at 100 / 100 / 100 globally enforced by `vitest.config.js` with no per-file reductions. Backend coverage unchanged at 100 / 100 / 100.
 - ✅ Project CLAUDE.md §3-compliant: mandatory-re-read directive + §0 critical context.
 - ✅ `docs/status.md` + `docs/versions.md` + this master plan reflect v2.1.1. README unchanged (its test-count + architecture diagrams remain accurate; the only numerical updates are in `docs/status.md` and `docs/versions.md`).
+
+**Security gate (applies to this and every phase, from the first pipeline onward):**
+- SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification.
+- New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`.
 
 ---
 

@@ -1,0 +1,4 @@
+# False positive: gitleaks' generic-api-key rule matches the fixture concept id "c-auth" in a
+# SessionConcept test row (it sees an auth-ish token next to a quoted string). There is no
+# credential on that line -- it is graph fixture data. Re-verify if the line ever changes.
+browser/backend/tests/test_api_related.py:generic-api-key:24

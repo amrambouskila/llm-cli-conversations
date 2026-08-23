@@ -31,9 +31,17 @@ jobs:
         working-directory: browser/backend
         run: pip install -r requirements-dev.txt
 
-      - name: Ruff check
+      - name: Ruff check (backend)
         working-directory: browser/backend
         run: ruff check .
+
+      # The root-level converter/extraction scripts are real code that shells out to the Claude CLI,
+      # so they get the same security rules; they live outside browser/backend and were previously
+      # unlinted. Config is passed explicitly because there is no pyproject.toml at the repo root.
+      - name: Ruff check (root scripts)
+        run: |
+          pip install ruff
+          ruff check --select E,F,I,N,UP,S --line-length 120             convert_claude_jsonl_to_md.py convert_codex_sessions.py convert_export.py graph_extract.py
 
   lint-frontend:
     name: Lint frontend (eslint)
@@ -55,10 +63,69 @@ jobs:
         working-directory: browser/frontend
         run: npm run lint
 
+  sast:
+    name: SAST (CodeQL + Semgrep + gitleaks + dependency audit)
+    runs-on: ubuntu-latest
+    needs: [lint-backend, lint-frontend]
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: browser/backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: browser/frontend/package-lock.json
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python,javascript-typescript
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql
+
+      - name: Semgrep
+        run: |
+          pipx run semgrep scan --config auto --config p/owasp-top-ten --config p/python --config p/typescript --config p/react --config p/docker --severity ERROR --error --sarif --output semgrep.sarif || echo "SEMGREP_FAILED=1" >> "$GITHUB_ENV"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: ${{ !cancelled() }}
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - name: Fail on Semgrep findings
+        run: test -z "${SEMGREP_FAILED:-}"
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend dependency audit
+        run: pipx run pip-audit -r browser/backend/requirements.txt
+
+      - name: Frontend dependency audit
+        working-directory: browser/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+
   test-backend:
     name: Test backend (pytest + pgvector testcontainer)
     runs-on: ubuntu-latest
-    needs: lint-backend
+    needs: sast
     permissions:
       contents: read
       checks: write
@@ -117,6 +184,7 @@ jobs:
   test-frontend:
     name: Test frontend (vitest + jsdom)
     runs-on: ubuntu-latest
+    needs: sast
     permissions:
       contents: read
       checks: write
@@ -193,6 +261,15 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: conversations:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trivy image scan (HIGH/CRITICAL fail the job)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: conversations:ci-${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true

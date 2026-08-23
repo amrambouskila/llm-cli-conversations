@@ -87,7 +87,7 @@ def main():
         print(f"ERROR: Claude projects directory not found: {projects_src}")
         print(f"       Expected at: {projects_src}")
         if platform.system() == "Windows":
-            print(f"       On Windows, set CLAUDE_CONFIG_DIR if Claude uses a custom location.")
+            print("       On Windows, set CLAUDE_CONFIG_DIR if Claude uses a custom location.")
         sys.exit(1)
 
     available = list_projects(projects_src)
@@ -109,7 +109,7 @@ def main():
         matched = [p for p in available if filter_str.lower() in p.lower()]
         if not matched:
             print(f'ERROR: No projects match "{filter_str}"')
-            print(f"\nAvailable projects:")
+            print("\nAvailable projects:")
             for name in available:
                 print(f"  {name}")
             sys.exit(1)
@@ -145,7 +145,7 @@ def main():
         print(f"ERROR: Converter script not found: {converter_script}")
         sys.exit(1)
 
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- argv list (never a shell string): the interpreter plus an in-repo script and derived paths
         [sys.executable, str(converter_script), str(raw_projects_dir), str(export_root / "markdown")],
         cwd=str(export_root),
     )

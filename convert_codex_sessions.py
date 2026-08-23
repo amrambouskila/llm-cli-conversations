@@ -12,7 +12,6 @@ with types like user_message, agent_message, function_call, etc.
 import json
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 
 SRC = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) > 1 else Path.home() / ".codex" / "sessions"
@@ -66,7 +65,6 @@ def parse_session(session_path: Path) -> dict:
     for rec in records:
         ts = rec.get("timestamp", "")
         payload = rec.get("payload", {})
-        rec_type = rec.get("type", "")
         inner_type = payload.get("type", "")
 
         # User message

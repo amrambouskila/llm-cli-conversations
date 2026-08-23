@@ -355,7 +355,7 @@ def get_first_timestamp(jsonl_path: Path) -> datetime | None:
                         return dt
                 except json.JSONDecodeError:
                     continue
-    except Exception:
+    except Exception:  # noqa: S110 -- best-effort timestamp probe; an unreadable file just yields None
         pass
     return None
 
@@ -432,7 +432,7 @@ def load_existing_keys(out_path: Path) -> set[str]:
             m = re.search(r"<!-- ENTRY_KEY: (.+?) -->", line)
             if m:
                 keys.add(m.group(1))
-    except Exception:
+    except Exception:  # noqa: S110 -- best-effort key scan; an unreadable file just yields no keys
         pass
     return keys
 

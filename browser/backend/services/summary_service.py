@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -13,6 +14,23 @@ from models import Segment, Session
 SUMMARIES_DIR = Path(os.environ.get("SUMMARY_DIR", "/data/state/summaries"))
 
 ROLLUP_CHUNK_TARGET = 80_000
+
+SUMMARY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
+
+
+class InvalidSummaryKeyError(ValueError):
+    """Raised when a summary key could name a path outside SUMMARIES_DIR."""
+
+
+def _summary_file(key: str, ext: str) -> Path:
+    """Resolve SUMMARIES_DIR/{key}{ext}, refusing keys that are not a single safe path segment."""
+    if not SUMMARY_KEY_PATTERN.fullmatch(key):
+        raise InvalidSummaryKeyError(f"invalid summary key: {key!r}")
+    base = SUMMARIES_DIR.resolve()
+    target = (base / f"{key}{ext}").resolve()
+    if not target.is_relative_to(base):
+        raise InvalidSummaryKeyError(f"summary key escapes the summary store: {key!r}")
+    return target
 
 
 class SummaryService:
@@ -48,7 +66,7 @@ class SummaryService:
             _delete_conv_artifacts(segment_id)
             return
         for ext in (".md", ".pending", ".input"):
-            f = SUMMARIES_DIR / f"{segment_id}{ext}"
+            f = _summary_file(segment_id, ext)
             if f.exists():
                 f.unlink()
         _invalidate_dependent_conv_summaries(segment_id)
@@ -84,9 +102,9 @@ class SummaryService:
         provider: str,
     ) -> dict | None:
         key = f"conv_{project_name}_{conversation_id}"
-        md_file = SUMMARIES_DIR / f"{key}.md"
+        md_file = _summary_file(key, ".md")
         if md_file.exists():
-            pending_file = SUMMARIES_DIR / f"{key}.pending"
+            pending_file = _summary_file(key, ".pending")
             if pending_file.exists():
                 pending_file.unlink()
             return _summary_status(key)
@@ -149,8 +167,8 @@ def _parse_summary_file(content: str) -> dict:
 
 
 def _summary_status(key: str) -> dict:
-    md_file = SUMMARIES_DIR / f"{key}.md"
-    pending_file = SUMMARIES_DIR / f"{key}.pending"
+    md_file = _summary_file(key, ".md")
+    pending_file = _summary_file(key, ".pending")
     if md_file.exists():
         parsed = _parse_summary_file(md_file.read_text(encoding="utf-8"))
         return {"status": "ready", **parsed}
@@ -160,17 +178,17 @@ def _summary_status(key: str) -> dict:
 
 
 def _enqueue_summary_job(key: str, input_text: str) -> None:
-    md_file = SUMMARIES_DIR / f"{key}.md"
-    pending_file = SUMMARIES_DIR / f"{key}.pending"
+    md_file = _summary_file(key, ".md")
+    pending_file = _summary_file(key, ".pending")
     if md_file.exists() or pending_file.exists():
         return
     SUMMARIES_DIR.mkdir(parents=True, exist_ok=True)
-    (SUMMARIES_DIR / f"{key}.input").write_text(input_text, encoding="utf-8")
+    (_summary_file(key, ".input")).write_text(input_text, encoding="utf-8")
     pending_file.write_text("", encoding="utf-8")
 
 
 def _request_summary(key: str, markdown: str) -> dict:
-    md_file = SUMMARIES_DIR / f"{key}.md"
+    md_file = _summary_file(key, ".md")
     if md_file.exists():
         return _summary_status(key)
     _enqueue_summary_job(key, markdown)
@@ -182,7 +200,7 @@ _get_summary = _summary_status
 
 
 def _read_summary_body(key: str) -> str | None:
-    md_file = SUMMARIES_DIR / f"{key}.md"
+    md_file = _summary_file(key, ".md")
     if not md_file.exists():
         return None
     parsed = _parse_summary_file(md_file.read_text(encoding="utf-8"))
@@ -239,7 +257,7 @@ def _rollup_header(is_final: bool) -> str:
 
 
 def _conv_state_path(key: str) -> Path:
-    return SUMMARIES_DIR / f"{key}.state.json"
+    return _summary_file(key, ".state.json")
 
 
 def _load_conv_state(key: str) -> dict | None:
@@ -266,11 +284,11 @@ def _conv_progress(state: dict | None) -> dict:
     phase = state.get("phase")
     if phase == "segments":
         seg_keys = state.get("segment_keys", [])
-        done = sum(1 for k in seg_keys if (SUMMARIES_DIR / f"{k}.md").exists())
+        done = sum(1 for k in seg_keys if (_summary_file(k, ".md")).exists())
         return {"phase": "segments", "done": done, "total": len(seg_keys), "level": 0}
     if phase == "rollup":
         chunk_keys = state.get("current_chunk_keys", [])
-        done = sum(1 for k in chunk_keys if (SUMMARIES_DIR / f"{k}.md").exists())
+        done = sum(1 for k in chunk_keys if (_summary_file(k, ".md")).exists())
         return {
             "phase": "rollup",
             "done": done,
@@ -294,11 +312,11 @@ def _delete_conv_artifacts(key: str) -> None:
     if state:
         for chunk_key in state.get("all_chunk_keys", []):
             for ext in (".md", ".pending", ".input"):
-                f = SUMMARIES_DIR / f"{chunk_key}{ext}"
+                f = _summary_file(chunk_key, ext)
                 if f.exists():
                     f.unlink()
     for ext in (".md", ".pending", ".input", ".state.json"):
-        f = SUMMARIES_DIR / f"{key}{ext}"
+        f = _summary_file(key, ext)
         if f.exists():
             f.unlink()
 
@@ -335,8 +353,8 @@ def _start_rollup_level(key: str, state: dict, child_summaries: list) -> dict:
 
 
 def _advance_conv_summary(key: str, segments: list) -> dict:
-    md_file = SUMMARIES_DIR / f"{key}.md"
-    pending_file = SUMMARIES_DIR / f"{key}.pending"
+    md_file = _summary_file(key, ".md")
+    pending_file = _summary_file(key, ".pending")
 
     if md_file.exists():
         if pending_file.exists():
@@ -371,7 +389,7 @@ def _advance_conv_summary(key: str, segments: list) -> dict:
             body = _read_summary_body(sk)
             if body is None:
                 all_ready = False
-                if not (SUMMARIES_DIR / f"{sk}.pending").exists():
+                if not (_summary_file(sk, ".pending")).exists():
                     seg = seg_by_id.get(sk)
                     if seg is not None:
                         _request_summary(sk, seg["raw_markdown"])
@@ -381,7 +399,7 @@ def _advance_conv_summary(key: str, segments: list) -> dict:
             return _conv_pending(state)
         if len(state["segment_keys"]) == 1:
             only_seg_key = state["segment_keys"][0]
-            shutil.copy2(SUMMARIES_DIR / f"{only_seg_key}.md", md_file)
+            shutil.copy2(_summary_file(only_seg_key, ".md"), md_file)
             if pending_file.exists():
                 pending_file.unlink()
             return _summary_status(key)
@@ -400,7 +418,7 @@ def _advance_conv_summary(key: str, segments: list) -> dict:
         if not all_ready:
             return _conv_pending(state)
         if len(chunk_keys) == 1:
-            shutil.copy2(SUMMARIES_DIR / f"{chunk_keys[0]}.md", md_file)
+            shutil.copy2(_summary_file(chunk_keys[0], ".md"), md_file)
             if pending_file.exists():
                 pending_file.unlink()
             return _summary_status(key)

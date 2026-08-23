@@ -1,6 +1,8 @@
 import js from "@eslint/js";
+import noUnsanitized from "eslint-plugin-no-unsanitized";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
+import security from "eslint-plugin-security";
 import globals from "globals";
 
 export default [
@@ -8,6 +10,10 @@ export default [
   {
     ignores: ["dist/**", "coverage/**", "node_modules/**"],
   },
+
+  // Security rules apply to every linted file (source and tests alike)
+  security.configs.recommended,
+  noUnsanitized.configs.recommended,
 
   // Production source: src/**/*.{js,jsx} excluding tests
   {

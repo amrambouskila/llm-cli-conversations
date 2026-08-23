@@ -4,6 +4,32 @@ Semver changelog, newest at top. The authoritative current version is the `versi
 
 ---
 
+## v2.2.2 — 2026-08-20
+
+**Security documentation + SAST wiring.** Propagates the global `<security>` standard (SAST stage + injection-safety inventory) into this repo's instruction files, master plan, and status docs, then wires it: `sast` CI stage, Trivy, ruff `S`, ESLint security plugins, FastAPI security headers, and summary-store path confinement. Stays a **patch**: no new endpoint, schema, or contract; the two runtime changes are hardening of existing behavior (response headers added; summary keys that were never valid now 404 deterministically instead of reaching the filesystem).
+
+### Security wiring
+
+- `.github/workflows/ci.yml` — new `sast` job (`needs: [lint-backend, lint-frontend]`, `permissions: security-events: write`): CodeQL `python` + `javascript-typescript` (`init@v3` → `analyze@v3`), Semgrep (`pipx run semgrep scan --config auto --config p/owasp-top-ten --config p/python --config p/typescript --config p/react --config p/docker --severity ERROR --error`, SARIF uploaded via `codeql-action/upload-sarif` + fail-on-findings step), `gitleaks/gitleaks-action@v2` (`fetch-depth: 0`), `pipx run pip-audit -r browser/backend/requirements.txt`, `npm audit --audit-level=high`. `test-backend` and `test-frontend` now `needs: sast`. `docker-build` builds with `load: true` and runs `aquasecurity/trivy-action@0.28.0` (`severity: HIGH,CRITICAL`, `exit-code: 1`, `ignore-unfixed: true`).
+- `browser/backend/pyproject.toml` — ruff `select` gains `S`; `tests/**/*.py` per-file-ignores gain `S101`.
+- `browser/backend/security_headers.py` (new) — `SecurityHeadersMiddleware` sets CSP (`default-src 'self'`, `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src 'self' data: blob:`, `font-src 'self' data:`, `connect-src 'self'`, `worker-src 'self' blob:`, `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` via `setdefault` on every response. Registered in `app.py`.
+- `browser/backend/services/summary_service.py` — every summary-store path is built by `_summary_file(key, ext)`, which validates the key against `SUMMARY_KEY_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9_\-]*$`) and refuses resolved paths outside `SUMMARIES_DIR.resolve()`, raising `InvalidSummaryKeyError`. `app.py` registers an exception handler mapping it to 404.
+- Justified `# noqa` suppressions: `S603` on the two constant-argv `subprocess.run` calls in `app.py`; `S110` on the optional vector-leg fallback in `services/search_service.py`; `S106` (`tests/conftest.py` throwaway container password) and `S108` (`tests/test_import_graph.py` fixture path).
+- `browser/frontend/eslint.config.js` — `eslint-plugin-security` + `eslint-plugin-no-unsanitized` recommended configs applied to every linted file (0 errors, warnings only). `package.json` gains devDependencies `eslint-plugin-security ^4.0.1`, `eslint-plugin-no-unsanitized ^4.1.5` and a `sast` script (`pipx run semgrep scan --config auto --error . && gitleaks detect --no-git --redact`).
+- Tests (new): `browser/backend/tests/test_security_headers.py` (2), `browser/backend/tests/services/test_summary_key_confinement.py` (3, parametrized: well-formed keys resolve inside the store, malformed keys rejected before any filesystem access, service entry points reject traversal). 17 non-DB tests pass locally; the DB-backed confinement test runs in CI via testcontainers.
+- Still pending after this entry: `Query(max_length=...)` on `q` + `ge`/`le` on the remaining integer params; per-file size bound in the JSONL/Markdown loaders; explicit no-tool pin on `claude -p`
+
+### Docs
+
+- `CLAUDE.md` / `AGENTS.md` — new `<security>` section: required `sast` stage in `.github/workflows/ci.yml` (Semgrep + CodeQL with SARIF upload, ruff `S` rules in `lint-backend`, `eslint-plugin-security` + `eslint-plugin-no-unsanitized` in `lint-frontend`, `pip-audit` / `npm audit`, gitleaks, Trivy on `docker-build`; fail on HIGH/CRITICAL, MEDIUM triaged with written justification); full input-boundary inventory (REST params, wiki slug, summary `segment_id`, `POST /api/update`, graph-generate sentinel, env vars, JSONL/Markdown loaders, Graphify artifacts, `claude -p` prompt injection, `dangerouslySetInnerHTML` XSS) with per-row injection class and in-place vs required defense; project-specific notes (transcripts are PII, `hidden_at` is not access control, single-user localhost-only); Security check added to the self-audit.
+- `docs/CONVERSATIONS_MASTER_PLAN.md` — §5 Security section (tool set + local reproduction), `1a. sast` inserted between `lint-*` and `test-*` in the §10 pipeline stage list, and the two SAST gate lines ("SAST stage green — zero HIGH/CRITICAL findings; MEDIUM findings triaged with written justification" / "New input boundaries in this phase are injection-safe and documented in `CLAUDE.md` `<security>`") added to every phase gate list.
+- `docs/status.md` — Security section lists what is wired vs. still pending; CI pipeline line shows `sast` between lint and test and Trivy on `docker-build`.
+- `README.md` — CI paragraph describes the wired `sast` stage, the Trivy scan, and the local `npm run sast` command.
+- Instruction files, master plan, and status docs were reconciled after the wiring landed: every "not yet wired" / "required" / "not present today" statement about the items above now reads as current state; only the genuinely pending items remain marked pending.
+- `docs/versions.md` — this entry.
+
+---
+
 ## v2.1.1 — 2026-04-22
 
 **Phase 9 — Drift remediation & full coverage push.** Closes every drift item surfaced by two independent audits (one external, one self-conducted against global CLAUDE.md), replaces the custom HTML sanitizer with DOMPurify, hoists the last of the inline JSX arrow wrappers into named `useCallback`s, and lifts the entire frontend to a flat 100% line + branch + function coverage gate.

@@ -58,9 +58,30 @@ CI gates now enforce a flat **100 / 100 / 100** coverage gate on both layers —
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` — lint-backend (ruff) → test-backend (pytest + 100% coverage gate) → lint-frontend (ESLint v9) → test-frontend (vitest + per-file gates) → build-frontend (Vite) → docker-build. Triggers on push + PR against `main|staging|dev` + manual dispatch. Per-ref concurrency cancels in-flight runs.
+`.github/workflows/ci.yml` — lint-backend (ruff) + lint-frontend (ESLint v9) → sast (CodeQL + Semgrep SARIF + gitleaks + pip-audit + npm audit; fails on HIGH/CRITICAL) → test-backend (pytest + 100% coverage gate) + test-frontend (vitest + flat 100% gate) → build-frontend (Vite) → docker-build (+ Trivy HIGH/CRITICAL image scan). Triggers on push + PR against `main|staging|dev` + manual dispatch. Per-ref concurrency cancels in-flight runs.
 
 `.github/workflows/release.yml` — manual `workflow_dispatch` to bump `browser/frontend/package.json`'s semver (patch / minor / major).
+
+---
+
+## Security
+
+The global `<security>` standard (`CLAUDE.md` `<security>`, master plan §5 + per-phase SAST gate lines) is now **enforced by tooling** as of v2.2.2.
+
+**Wired:**
+
+- `sast` job in `.github/workflows/ci.yml` — `needs: [lint-backend, lint-frontend]`; CodeQL (`python`, `javascript-typescript`), Semgrep (`--config auto` + owasp/python/typescript/react/docker packs, `--severity ERROR`, SARIF uploaded under category `semgrep`, separate fail-on-findings step), `gitleaks/gitleaks-action@v2`, `pip-audit -r browser/backend/requirements.txt`, `npm audit --audit-level=high`. `test-backend` and `test-frontend` carry `needs: sast`. No `continue-on-error`.
+- Trivy — `docker-build` loads the image and runs `aquasecurity/trivy-action@0.28.0` (`HIGH,CRITICAL`, `exit-code: 1`, `ignore-unfixed: true`).
+- ruff `S` — `browser/backend/pyproject.toml` `select = ["E", "F", "I", "N", "UP", "ANN", "S"]`, `tests/**/*.py` ignores `S101`. Justified `# noqa` only on the constant-argv `subprocess.run` calls in `app.py` (`S603`), the optional vector-leg fallback in `search_service.py` (`S110`), and test fixtures (`S106`, `S108`).
+- ESLint — `eslint-plugin-security` + `eslint-plugin-no-unsanitized` recommended configs in `browser/frontend/eslint.config.js` (0 errors, warnings only); `npm run sast` script (`semgrep scan --config auto --error . && gitleaks detect --no-git --redact`).
+- Security response headers — `browser/backend/security_headers.py::SecurityHeadersMiddleware` registered in `app.py`: CSP (`default-src 'self'`, `script-src 'self'`, `connect-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`, …), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`. Test: `tests/test_security_headers.py`.
+- Summary-store path confinement — every `SUMMARIES_DIR` path goes through `SummaryService::_summary_file`, which validates the key against `^[A-Za-z0-9][A-Za-z0-9_\-]*$` and confines the resolved path to `SUMMARIES_DIR`; `InvalidSummaryKeyError` → 404 via an `app.py` exception handler. Test: `tests/services/test_summary_key_confinement.py`.
+
+**Still pending:**
+
+- `Query(max_length=...)` on `q` and `ge`/`le` bounds on the remaining integer params (only `/api/dashboard/top-expensive-sessions` has `ge=1, le=50`).
+- Per-file size bound before `read_text()` in the JSONL/Markdown loaders (`jsonl_reader.py`, `parser.py`, `load.py`, `convert_*.py`).
+- Explicit no-tool pin on `claude -p` invocations (`graph_extract.py`, `summary_watcher.{sh,bat}`, `export_service.sh`).
 
 ---
 

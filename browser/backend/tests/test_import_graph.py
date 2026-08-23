@@ -99,7 +99,7 @@ async def test_import_graph_fallback_stem_match(tmp_path, seed_sessions, db_sess
             {
                 "id": "nX",
                 "label": "Auth",
-                "source_file": "/tmp/conversations.md",  # stem matches "conversations"
+                "source_file": "/tmp/conversations.md",  # noqa: S108 -- fixture path, never opened; stem matches
             },
         ],
         "links": [],

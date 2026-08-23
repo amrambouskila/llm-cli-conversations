@@ -1,0 +1,14 @@
+# Both entries below come from pip's vendored manifest in the upstream python:*-slim base image
+# (/usr/local/lib/python3.*/site-packages/pip/_vendor/vendor.txt), not from this project's
+# dependencies, and neither is remediable from inside the Dockerfile:
+#
+#   CVE-2025-47273 (setuptools 70.3.0) - a manifest entry only. No such distribution exists in the
+#     image; `find / -name '*70.3.0*'` returns nothing and the image ships setuptools 84.x.
+#
+#   GHSA-6v7p-g79w-8964 (msgpack 1.1.2) - vendored inside pip itself (pip/_vendor/msgpack) and
+#     exercised only by pip's own HTTP cache, never by application code.
+#
+# `pip install --upgrade pip setuptools` does not rewrite vendor.txt, so the finding persists
+# regardless. Re-check and remove these lines when the base image refreshes its bundled pip.
+CVE-2025-47273
+GHSA-6v7p-g79w-8964

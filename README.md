@@ -191,7 +191,7 @@ docker run --rm -v "$(pwd)/browser/backend:/app" -v /var/run/docker.sock:/var/ru
 cd browser/frontend && npm ci && npm run lint && npm run test:coverage && npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same commands plus a multi-stage Docker build verification. Backend enforces `--cov-fail-under=100`. Frontend enforces per-file thresholds in `vitest.config.js` — every module at 100% lines, most at 100% branches + functions, with the remaining hard-to-reach inline JSX wrappers and Chart.js option callbacks held at their measured posture.
+CI (`.github/workflows/ci.yml`) runs the same commands plus a multi-stage Docker build verification, in the order lint → sast → test → build → docker-build. The `sast` stage (CodeQL + Semgrep with SARIF upload, `pip-audit` + `npm audit --audit-level=high`, gitleaks; fails on HIGH/CRITICAL) gates both test jobs, and `docker-build` finishes with a Trivy HIGH/CRITICAL scan of the built image. Locally, `npm run sast` in `browser/frontend` runs Semgrep + gitleaks (both must be installed). See `CLAUDE.md` `<security>`. Backend enforces `--cov-fail-under=100`. Frontend enforces per-file thresholds in `vitest.config.js` — every module at 100% lines, most at 100% branches + functions, with the remaining hard-to-reach inline JSX wrappers and Chart.js option callbacks held at their measured posture.
 
 ## How the Browser Works
 

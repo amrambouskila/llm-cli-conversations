@@ -206,8 +206,11 @@ def extract_file(md_path: Path, out_dir: Path, model: str) -> bool:
     stdin_text = f"{user_prompt}{body}"
 
     try:
-        result = subprocess.run(
-            [
+        # noqa rationale: argv list, never a shell string, so nothing is interpreted by a shell.
+        # "claude" is deliberately resolved from PATH -- it is a user-installed CLI whose location
+        # differs per machine; pinning an absolute path here would break every other install.
+        result = subprocess.run(  # noqa: S603
+            [  # noqa: S607
                 "claude", "-p",
                 "--model", model,
                 "--system-prompt", SYSTEM_PROMPT,
@@ -249,7 +252,7 @@ def extract_file(md_path: Path, out_dir: Path, model: str) -> bool:
 GOD_NODE_COUNT = 15
 
 
-def _derive_god_nodes(G) -> list[dict]:  # noqa: ANN001 — networkx.Graph avoids module-level import cost
+def _derive_god_nodes(G) -> list[dict]:  # noqa: ANN001, N803 — networkx.Graph avoids module-level import cost
     """Top-N highest-degree nodes shaped for graphify.wiki.to_wiki.
 
     Emits both `edges` (graphifyy ≤0.4.8) and `degree` (graphifyy ≥0.4.9) so the payload
@@ -307,7 +310,7 @@ def build_graph(out_dir: Path) -> bool:
         "output_tokens": 0,
     }
 
-    G = build_from_json(extraction)
+    G = build_from_json(extraction)  # noqa: N806 -- `G` is the NetworkX convention for a graph
     communities = cluster(G)
     to_json(G, communities, str(out_dir / "graph.json"))
 

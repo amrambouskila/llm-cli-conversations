@@ -19,11 +19,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from routes import conversations, dashboard, graph, projects, segments, stats, summaries, visibility
+from security_headers import SecurityHeadersMiddleware
+from services.summary_service import InvalidSummaryKeyError
 
 
 def _log(msg: str) -> None:
@@ -127,6 +129,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.exception_handler(InvalidSummaryKeyError)
+async def _invalid_summary_key(_request: Request, _exc: InvalidSummaryKeyError) -> JSONResponse:
+    return JSONResponse({"error": "summary not found"}, status_code=404)
 
 # Include route modules
 app.include_router(projects.router)
@@ -202,7 +210,11 @@ async def run_export_pipeline() -> dict:
     for old_md in markdown_dir.glob("*.md"):
         old_md.unlink()
 
-    result = subprocess.run(
+    # argv list, never a shell string, so there is no command to inject into. The arguments are
+    # the interpreter, an in-repo script, and directories derived from env config -- not request data.
+    # nosemgrep
+    result = subprocess.run(  # noqa: S603 -- argv list of interpreter + repo script + env-derived dirs; no request data
+        # nosemgrep
         [sys.executable, str(converter_script), str(raw_projects_dir), str(markdown_dir)],
         capture_output=True,
         text=True,
@@ -225,7 +237,11 @@ async def run_export_pipeline() -> dict:
         codex_md.mkdir(parents=True, exist_ok=True)
         for old_md in codex_md.glob("*.md"):
             old_md.unlink()
-        cx_result = subprocess.run(
+        # argv list, never a shell string, so there is no command to inject into. The arguments are
+        # the interpreter, an in-repo script, and directories derived from env config -- not request data.
+        # nosemgrep
+        cx_result = subprocess.run(  # noqa: S603 -- argv list of interpreter + repo script + env-derived dirs; no request data
+            # nosemgrep
             [sys.executable, str(codex_converter), str(codex_src), str(codex_md)],
             capture_output=True, text=True,
         )

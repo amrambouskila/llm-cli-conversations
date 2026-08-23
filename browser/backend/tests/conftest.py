@@ -56,7 +56,7 @@ def _pg_container() -> Iterator:
     container = PostgresContainer(
         image="pgvector/pgvector:pg16",
         username="conversations",
-        password="conversations",
+        password="conversations",  # noqa: S106 -- throwaway credential for the ephemeral pgvector test container
         dbname="conversations",
         driver="asyncpg",
     )

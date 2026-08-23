@@ -44,13 +44,17 @@ jobs:
       - name: Bump package.json (no tag yet)
         id: bump
         working-directory: browser/frontend
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
-          new_version=$(npm version "${{ inputs.bump }}" --no-git-tag-version)
+          new_version=$(npm version "$BUMP" --no-git-tag-version)
           echo "new_version=${new_version}" >> "$GITHUB_OUTPUT"
 
       - name: Commit + tag
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
         run: |
-          version="${{ steps.bump.outputs.new_version }}"
+          version="$NEW_VERSION"
           git add browser/frontend/package.json browser/frontend/package-lock.json
           git commit -m "release: ${version}"
           git tag "${version}"

@@ -166,7 +166,7 @@ The conversation browser is functional — parsers, FastAPI backend, React UI, D
 - [x] OOP refactoring: service layer + repository pattern (Phase 7.1 — 7 services, 5 repositories, DI wiring, Pydantic response_models on every route)
 - [x] Latent bug fixes: `func.literal(1.0)` + date-range cast (Phase 7.2 — XPASS handoff complete)
 - [x] Full unit + integration test suite (Phase 6.5-6.6 — 348 pytest + 104 vitest across 26 files; Phase 7.1 added 179 more in 12 files → 621 total)
-- [x] GitHub Actions CI pipeline (Phase 6.7 — `ci.yml` with lint/test/coverage/build/docker-build, `release.yml` for semver bumps)
+- [x] GitHub Actions CI pipeline (Phase 6.7 — `ci.yml` with lint/sast/test/coverage/build/docker-build (+ Trivy), `release.yml` for semver bumps)
 - [x] Backend coverage gate 70→90 (Phase 7.4 partial — at 94.56%)
 - [ ] Frontend decomposition + ESLint + tests for 9 deferred components (Phase 7.3)
 - [ ] Cost calculation audit + UI breakdown (Phase 7.5 — cache_write premium, 4-way breakdown, Top-5 widget)
@@ -209,6 +209,68 @@ cd browser/frontend && npm run build
 - Token estimates: currently char_count // 4 (rough). v2 uses actual token counts from JSONL `message.usage` fields.
 
 </coding_standards>
+
+<security>
+
+## Security — SAST Scanning & Injection Safety (Non-Negotiable)
+
+Implements global CLAUDE.md section 19 `<security>` for this repo. Security items are part of the Definition of Done for every change, not a later phase.
+
+### SAST scanning — required `sast` stage in `ci.yml`
+
+`.github/workflows/ci.yml` MUST carry a `sast` stage positioned after `lint-backend` / `lint-frontend` and before `test-backend` / `test-frontend` (`test-*` gain `needs: sast`), failing the pipeline on any HIGH/CRITICAL finding. MEDIUM findings are triaged: fixed, or suppressed inline with a written justification. `continue-on-error: true` on the stage is non-compliant. **Wired:** the `sast` job exists with `needs: [lint-backend, lint-frontend]` and job-level `permissions: security-events: write`; `test-backend` and `test-frontend` carry `needs: sast`; Trivy runs inside `docker-build` against the loaded image. Pipeline order is lint-backend + lint-frontend → sast → test-backend + test-frontend → build-frontend → docker-build (+ Trivy).
+
+Tool set (GitHub / public project wiring):
+
+- **Semgrep** — `pipx run semgrep scan` with `--config auto --config p/owasp-top-ten --config p/python --config p/typescript --config p/react --config p/docker --severity ERROR --error`, writing `semgrep.sarif`; the SARIF is uploaded via `github/codeql-action/upload-sarif` (category `semgrep`) so findings render under Security → Code scanning, then a separate step fails the job if Semgrep reported findings. Project rules, when needed, live in `.semgrep/` at the repo root.
+- **CodeQL** — `github/codeql-action/init@v3` → `analyze@v3` (category `codeql`) for `python` and `javascript-typescript`, inside the `sast` job.
+- **ruff `S` rules (backend)** — wired: `browser/backend/pyproject.toml` `[tool.ruff.lint] select = ["E", "F", "I", "N", "UP", "ANN", "S"]` with `"tests/**/*.py" = ["ANN", "S101"]` in `per-file-ignores`. `subprocess(shell=True)`, `eval`/`exec`, `pickle`, unsafe `yaml.load`, string-built SQL (`S608`) and hard-coded credentials are now caught by the existing `lint-backend` job. Every `S` suppression carries an inline justification: `S603` on the two constant-argv `subprocess.run` calls in `app.py`, `S110` on the optional vector-leg fallback in `services/search_service.py`, `S106`/`S108` on test fixtures.
+- **ESLint security plugins (frontend)** — wired: `security.configs.recommended` + `noUnsanitized.configs.recommended` (`eslint-plugin-security`, `eslint-plugin-no-unsanitized`) apply to every linted file in `browser/frontend/eslint.config.js`; `npm run lint` reports 0 errors (warnings only). The three `dangerouslySetInnerHTML` call sites listed below are the only permitted ones and each must be fed exclusively by `renderMarkdown()` (DOMPurify-sanitized).
+- **Dependency audit** — wired in `sast`: `pipx run pip-audit -r browser/backend/requirements.txt` and `npm audit --audit-level=high` in `browser/frontend` (project uses npm, not pnpm — see §0 overrides).
+- **Secret scanning** — wired in `sast`: `gitleaks/gitleaks-action@v2` on a `fetch-depth: 0` checkout (`gitleaks detect --no-git --redact` locally).
+- **Container scanning** — wired: `docker-build` now builds with `load: true` and runs `aquasecurity/trivy-action@0.28.0` (`severity: HIGH,CRITICAL`, `exit-code: 1`, `ignore-unfixed: true`) against `conversations:ci-${{ github.sha }}`.
+- **Security response headers** — wired: `browser/backend/security_headers.py::SecurityHeadersMiddleware` (registered in `app.py`) sets `Content-Security-Policy` (`default-src 'self'`, `script-src 'self'`, `connect-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`; `style-src` allows `'unsafe-inline'` for the Vite/Chart.js inline styles, `img-src`/`font-src`/`worker-src` allow `data:`/`blob:`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on every response via `setdefault`. Covered by `tests/test_security_headers.py`.
+
+Local reproduction (run from the repo root before pushing):
+
+```bash
+semgrep scan --config auto --error .
+gitleaks detect --no-git --redact
+cd browser/backend && ruff check . && pip-audit -r requirements.txt
+cd browser/frontend && npm run lint && npm audit --audit-level=high
+npm --prefix browser/frontend run sast   # semgrep scan --config auto --error . && gitleaks detect --no-git --redact
+```
+
+Semgrep and gitleaks must be installed on the host (`pipx install semgrep`, `brew install gitleaks` / `winget install gitleaks`) — `npm run sast` shells out to them.
+
+### Injection safety — input boundary inventory
+
+Everything below crosses into the process from outside. Each entry names the injection class(es) and the defense this codebase requires. "In place" = verified in the current source; "required" = not yet implemented, must land with the next change that touches the boundary.
+
+| Boundary | Where | Injection class(es) | Defense |
+|---|---|---|---|
+| REST query/path params (`q`, `provider`, `project`, `model`, `date_from`/`date_to`, `group_by`, `stack_by`, `segment_id`, `session_id`, `project_name`, `conversation_id`, `concept_id`/`concept_name`) | `browser/backend/routes/*.py` → `services/` → `repositories/` | SQL injection, resource exhaustion | In place: all queries are SQLAlchemy Core/ORM with bound parameters; `text()` appears only for literal `ORDER BY`/`GROUP BY` aliases and the `:sid` bind in `load.py`. Never interpolate a request value into `text()`; `group_by`/`stack_by`/`provider` must be matched against an allowlist, never used to pick a column. Required: length cap on `q` (`Query(max_length=...)`) and `ge`/`le` bounds on every integer param (`/api/dashboard/top-expensive-sessions` already has `ge=1, le=50`). |
+| `/api/graph/wiki/{slug}`, `/api/graph/wiki/lookup` | `routes/graph.py`, `services/graph_service.py` | Path traversal | In place: `GraphService._safe_wiki_path` resolves `graphify-out/wiki/{slug}.md` and rejects anything outside the wiki root via `relative_to()`; traversal → 404. Covered by `test_safe_wiki_path_rejects_traversal_with_parent`. |
+| `/api/summary/{segment_id}` (GET/POST/DELETE), `/api/summary/conversation/...` | `routes/summaries.py`, `services/summary_service.py` | Path traversal, resource exhaustion | Path params build file names under `SUMMARIES_DIR` (`{segment_id}.md/.pending/.input/.state.json`). In place: every summary-store path goes through `services/summary_service.py::_summary_file(key, ext)`, which rejects keys not matching `SUMMARY_KEY_PATTERN` (`^[A-Za-z0-9][A-Za-z0-9_\-]*$`) and refuses any resolved path that is not `relative_to(SUMMARIES_DIR.resolve())`, raising `InvalidSummaryKeyError`; `app.py` maps that exception to 404. POST 404s unknown segment IDs via DB lookup so arbitrary jobs cannot be enqueued. Covered by `tests/services/test_summary_key_confinement.py` (malformed keys rejected before any filesystem access; service entry points reject traversal). |
+| `POST /api/update` | `browser/backend/app.py` | Command injection | In place: `subprocess.run([sys.executable, script, src_dir, out_dir])` list form; arguments come from env/constants, never from the request body. `shell=True` is banned (`S602`). |
+| `POST /api/dashboard/graph/generate` | `routes/dashboard.py`, `services/graph_service.py` | Command injection (indirect) | In place: writes a `.generate_requested` sentinel only; the host-side `graph_watcher.{sh,bat}` decides what runs. No request data reaches the watcher. |
+| Environment variables (`DATABASE_URL`, `CORS_ORIGINS`, `*_DIR`, `POSTGRES_*`, `SUMMARY_MODEL`) | `app.py`, `db.py`, `load.py`, `services/*`, `docker-compose.yml`, launchers | Auth/secrets, misconfiguration | In place: Postgres credentials flow only through `${VAR:-default}` + `.env` (`.env*` writes are hook-blocked); `CORS_ORIGINS` is an explicit comma-separated allowlist parsed by `_parse_cors_origins` — `*` is never permitted. Directory env vars are trusted deployment config, not user input. |
+| Raw JSONL + generated Markdown loaders | `jsonl_reader.py`, `parser.py`, `load.py`, `convert_*.py` | Unsafe deserialization, resource exhaustion | In place: `json.loads` only — no `pickle`/`marshal`/`yaml.load`. File content (including tool output embedded in transcripts) is data: it is indexed and embedded, never executed or used to build paths or SQL. Required: per-file size bound before `read_text()`. |
+| Graphify artifacts (`graphify-out/graph.json`, `graphify-out/wiki/*.md`) | `import_graph.py`, `services/graph_service.py`, `services/dashboard_service.py` | Unsafe deserialization, XSS (downstream) | In place: `json.loads` + field-by-field mapping into `concepts`/`session_concepts`; wiki Markdown is served verbatim to the frontend and sanitized there (see XSS row). Treat these files as LLM output (next row). |
+| LLM calls — `claude -p` | `graph_extract.py` (stdin: condensed session Markdown, `--system-prompt`), `summary_watcher.{sh,bat}` + `export_service.sh` (stdin: `*.input` job file) | **Prompt injection**, command injection | Conversation transcripts contain tool results, pasted web pages and other untrusted text. In place: the instruction sits in the system prompt / positional prompt, transcript content arrives only on stdin as data; model output is consumed strictly as text (summaries: `TITLE:` line + body) or parsed JSON (`parse_graph_json` → `_normalize_file_type` coerces `file_type` to the `FILE_TYPE_ALIASES` enum). Model output never selects a file path, tool, URL or shell command. Required, and must hold for any new LLM call: pin the `claude -p` invocation to no tool access explicitly (today the calls rely on non-interactive defaults — verify against the CLI docs and make the restriction explicit when the invocation is next touched); keep the `timeout=300`; never splice transcript text into the prompt argument or a shell string (`subprocess` list form / stdin redirection only). |
+| Rendering untrusted Markdown/HTML in React | `ContentViewer.jsx:80`, `SummaryPanel.jsx:242`, `ConceptWikiPane.jsx:117` (`dangerouslySetInnerHTML`) ← `utils.js::renderMarkdown` | XSS | In place: every call site renders `renderMarkdown()` output, which ends in `DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR })` (`isomorphic-dompurify`, Phase 9.3). No new `dangerouslySetInnerHTML` site without going through `renderMarkdown`; `eslint-plugin-no-unsanitized` enforces this. In place: FastAPI serves the SPA (no nginx), so `SecurityHeadersMiddleware` (`security_headers.py`, registered in `app.py`) emits the CSP (`default-src 'self'`, `script-src 'self'` — no `unsafe-inline` scripts — `connect-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` on every response. Covered by `tests/test_security_headers.py`. |
+
+### Project-specific additions
+
+- **Transcripts are PII.** Raw JSONL and Markdown under `raw/`, `markdown/`, `markdown_codex/`, `browser_state/summaries/` contain the user's full CLI history (file paths, code, credentials that may have been pasted). They are gitignored, bind-mounted, and never leave the machine except as stdin to the local `claude` CLI. No endpoint may return a file path outside the transcript set; no log line may echo transcript content.
+- **Hidden state is not an access control.** `hidden_at` hides rows from the UI; it is a single-user convenience, not authorization. Do not describe or build on it as a security boundary.
+- **Single-user, localhost-bound service.** There is no auth layer by design (§0). Any change that binds the service to a non-loopback interface or adds a second user must first add authentication and revisit every row above — raise it against the master plan before coding.
+
+### Self-audit
+
+The task-completion self-audit (global CLAUDE.md section 15) now includes a **Security check** for this repo: local SAST clean (commands above); every touched input boundary names its injection class(es) and defense in the table above; the table is updated if a boundary was added or changed.
+
+</security>
 
 <pitfalls>
 

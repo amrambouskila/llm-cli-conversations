@@ -135,7 +135,7 @@ class SearchService:
             vector_ranked = await self.sessions.search_vector_top_sessions(
                 query_vector, scope, limit=SESSIONS_PER_LEG,
             )
-        except Exception:
+        except Exception:  # noqa: S110 -- vector leg is optional; keyword-only results are the documented fallback
             pass
 
         if vector_ranked:
