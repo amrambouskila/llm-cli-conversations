@@ -66,6 +66,14 @@ CI gates now enforce a flat **100 / 100 / 100** coverage gate on both layers —
 
 ## Security
 
+### Verified state (2026-08-24)
+
+- **Semgrep: clean.** Verified locally by running this repo's own CI command against the working tree (0 findings). The invocation itself was broken before today — `semgrep ci` rejects `--severity`/`--error` and exited 2 without scanning.
+- **Dependency audit: clean.** Verified with the repo's own audit command and threshold, after the override/upgrade remediation; install and build re-verified in the CI image.
+- **Container scan: base-image CVEs patched** via an `apt-get upgrade` layer, with the two unremediable pip-vendored findings carried in `.trivyignore` with justification.
+
+- Not run locally: gitleaks and Trivy are not part of any project toolchain here; both were exercised through their official images during verification, and CI runs them on every pipeline.
+
 The global `<security>` standard (`CLAUDE.md` `<security>`, master plan §5 + per-phase SAST gate lines) is now **enforced by tooling** as of v2.2.2.
 
 **Wired:**

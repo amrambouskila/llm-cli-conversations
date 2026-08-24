@@ -6,6 +6,16 @@ Semver changelog, newest at top. The authoritative current version is the `versi
 
 ## v2.2.2 — 2026-08-20
 
+### CI hardening + dependency remediation (2026-08-24)
+
+- **Semgrep invocation corrected.** The job used `semgrep ci` with `--severity` and `--error`, which that subcommand does not accept — it exits 2 with a usage error before scanning. Switched to `semgrep scan`, which supports both.
+- **Release workflow hardened against script injection.** `${{ inputs.bump }}` and `${{ steps.bump.outputs.new_version }}` were interpolated directly into `run:` blocks, where the value becomes shell code. Both now pass through `env:` and are read as quoted shell variables. The input is `type: choice`, so this was not exploitable today — it is the pattern that breaks the moment the input type changes.
+- **Base-image security patches in the Dockerfile.** The Debian slim bases ship a `util-linux` that Trivy flags HIGH (CVE-2026-53612..53615, fixed upstream in 2.41.5). Measured directly: `python:3.13-slim` carries 38 fixable HIGH/CRITICAL, `3.12-slim` 36, `3.11-slim` 38, while `nginx:alpine` is clean. These come from the base layer, so an `apt-get upgrade` step is required even where nothing else installs them.
+- **`.trivyignore` added** for two findings with no in-image remediation: `CVE-2025-47273` (setuptools 70.3.0) and `GHSA-6v7p-g79w-8964` (msgpack 1.1.2). Both come from pip's vendored manifest in the base image, not from project dependencies — and setuptools 70.3.0 is not even installed (`find` finds nothing; the image ships 84.x). Upgrading pip does not rewrite that manifest. Each entry carries its justification inline.
+- **Dependency remediation.** `vite ^6.3.5 -> ^6.4.3`, and `vitest` + `@vitest/coverage-v8` `^2.1 -> ^3.2.6`. vitest 2.x has no patched release for the advisory, so this is a deliberate major upgrade; npm proposed 4.x, and 3.2.6 is the smallest patched jump. `npm audit --audit-level=high` reports 0 vulnerabilities; build passes and all 887 tests across 38 files pass on the new runner.
+- **Root-level scripts are now linted.** `convert_claude_jsonl_to_md.py`, `convert_codex_sessions.py`, `convert_export.py` and `graph_extract.py` sat outside the `browser/backend` ruff scope and were never checked. A second `ruff check` step in `ci.yml` covers them with `E,F,I,N,UP,S`; nine findings fixed (unused import/variable, f-strings without placeholders) and the subprocess/except-pass sites carry justified `# noqa` with reasons.
+
+
 **Security documentation + SAST wiring.** Propagates the global `<security>` standard (SAST stage + injection-safety inventory) into this repo's instruction files, master plan, and status docs, then wires it: `sast` CI stage, Trivy, ruff `S`, ESLint security plugins, FastAPI security headers, and summary-store path confinement. Stays a **patch**: no new endpoint, schema, or contract; the two runtime changes are hardening of existing behavior (response headers added; summary keys that were never valid now 404 deterministically instead of reaching the filesystem).
 
 ### Security wiring
