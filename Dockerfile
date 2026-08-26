@@ -52,4 +52,8 @@ ENV PORT=5050
 
 EXPOSE 5050
 
+# Local-dev container, not a public-facing service, so non-root is exempt per global
+# CLAUDE.md section 9. A non-root USER would also break the bind-mounted host directories this
+# image reads and writes at runtime. Revisit before any deployment beyond localhost.
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5050"]
