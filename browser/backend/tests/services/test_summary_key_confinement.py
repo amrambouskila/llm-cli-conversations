@@ -39,3 +39,22 @@ def test_service_entry_points_reject_traversal(db_session, tmp_path):
     with pytest.raises(InvalidSummaryKeyError):
         svc.delete_summary("../../outside")
     assert not (tmp_path.parent / "outside.md").exists()
+
+
+def test_link_planted_in_the_store_cannot_smuggle_a_key_outside_it(tmp_path, tmp_path_factory):
+    """The regex admits ``escape``; only the resolve() guard catches a link pointing out of the store."""
+    outside = tmp_path_factory.mktemp("outside_store")
+    link = tmp_path / "escape.md"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        # Windows refuses symlinks without Developer Mode or admin (WinError 1314); a directory
+        # junction needs no privilege and Path.resolve() follows it identically.
+        import _winapi
+
+        _winapi.CreateJunction(str(outside), str(link))
+
+    assert link.resolve() == outside.resolve()
+
+    with pytest.raises(InvalidSummaryKeyError, match="escapes the summary store"):
+        sm._summary_file("escape", ".md")

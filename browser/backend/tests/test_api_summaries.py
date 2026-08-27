@@ -466,3 +466,10 @@ async def test_api_conv_summary_ready_path(api_client, tmp_path, monkeypatch):
     r = await api_client.get("/api/summary/conversation/proj/conv-id")
     assert r.status_code == 200
     assert r.json()["status"] == "ready"
+
+
+async def test_api_summary_get_invalid_key_returns_404(api_client):
+    """A key the regex rejects is mapped by the app-level handler, not by the route's own 404."""
+    r = await api_client.get("/api/summary/bad.key")
+    assert r.status_code == 404
+    assert r.json() == {"error": "summary not found"}

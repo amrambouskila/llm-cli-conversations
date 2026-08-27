@@ -6,6 +6,17 @@ Semver changelog, newest at top. The authoritative current version is the `versi
 
 ## v2.2.2 — 2026-08-20
 
+### Backend coverage gate restored to 100% (2026-08-28)
+
+The `test-backend` CI job was failing on the coverage gate alone — all 858 tests passed, but `--cov-fail-under=100` reported 99.93% (2 of 2878 statements uncovered). Both uncovered statements were introduced by the security wiring above and had no test exercising them:
+
+- `app.py:137` — the body of the `InvalidSummaryKeyError` exception handler. Covered by a new wire-level test, `tests/test_api_summaries.py::test_api_summary_get_invalid_key_returns_404`: `GET /api/summary/bad.key` fails `SUMMARY_KEY_PATTERN` (a `.` is not permitted), and Starlette dispatches the registered handler. The test asserts the exact body `{"error": "summary not found"}` so it cannot pass via the route's own `{"error": "segment not found"}` 404 without executing the handler.
+- `services/summary_service.py:32` — the `is_relative_to` escape guard in `_summary_file`. Unreachable by any string input (the regex admits only a separator-free single segment), so its real purpose is defending against a link planted inside the summary store. Covered by `tests/services/test_summary_key_confinement.py::test_link_planted_in_the_store_cannot_smuggle_a_key_outside_it`, which plants a real reparse point at `SUMMARIES_DIR/escape.md` pointing to a sibling directory and asserts the guard rejects it.
+
+No production code changed; no `pragma: no cover` added. The link test uses `Path.symlink_to` with a `_winapi.CreateJunction` fallback so it runs on both platforms rather than skipping: symlinks need Developer Mode or admin on Windows (`WinError 1314`), a directory junction needs no privilege, and `Path.resolve()` follows both identically. A `skipif` guard was rejected because it would leave line 32 uncovered on Windows and break `fail_under = 100` on every local run while CI stayed green. Verified end-to-end in `python:3.13-slim` (the CI platform): 2878 statements, 0 missed, `Required test coverage of 100% reached`. Backend tests 858 -> 860; ruff clean.
+
+Known-unrelated, still open: `jsonl_reader.py:36` tests `"/subagents/" in str(path)`, which never matches on Windows backslash paths — `test_read_claude_jsonl_skips_subagent` fails and line 37 is uncovered on a Windows host. CI is Linux, so the gate is unaffected.
+
 ### CI hardening + dependency remediation (2026-08-24)
 
 - **Semgrep invocation corrected.** The job used `semgrep ci` with `--severity` and `--error`, which that subcommand does not accept — it exits 2 with a usage error before scanning. Switched to `semgrep scan`, which supports both.
