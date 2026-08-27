@@ -17,6 +17,14 @@ No production code changed; no `pragma: no cover` added. The link test uses `Pat
 
 Known-unrelated, still open: `jsonl_reader.py:36` tests `"/subagents/" in str(path)`, which never matches on Windows backslash paths — `test_read_claude_jsonl_skips_subagent` fails and line 37 is uncovered on a Windows host. CI is Linux, so the gate is unaffected.
 
+### docker-build: Trivy action reference fixed (2026-08-28)
+
+`docker-build` failed before running: `Unable to resolve action aquasecurity/trivy-action@0.28.0, unable to find version 0.28.0`. That repository tags releases with a `v` prefix — `v0.28.0` exists, bare `0.28.0` never did — so the step could never resolve and the Trivy scan has in fact never executed in CI since it was added. Fixed by pinning `aquasecurity/trivy-action@v0.28.0`.
+
+Kept at `v0.28.0` (trivy binary v0.56.1) rather than bumping to the current `v0.36.0` (trivy v0.70.0): the inputs in use (`image-ref`, `severity`, `exit-code`, `ignore-unfixed`) are identical across both, and v0.56.1 still pulls the current `trivy-db:2` schema and scans correctly — verified directly — so there is no stale-binary hazard, and holding the version keeps the scan behaviour matched to the `.trivyignore` entries that were tuned against it. Since CVE data comes from the DB rather than the binary, detection currency is unaffected.
+
+Verified locally against the real image: `docker build -f ./Dockerfile .` succeeds, and the exact scan the job runs (`--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`, repo `.trivyignore` mounted) reports `Total: 0 (HIGH: 0, CRITICAL: 0)` and exits 0. Every other `uses:` reference in both workflow files was audited against the GitHub API; `trivy-action` was the only unresolvable one.
+
 ### CI hardening + dependency remediation (2026-08-24)
 
 - **Semgrep invocation corrected.** The job used `semgrep ci` with `--severity` and `--error`, which that subcommand does not accept — it exits 2 with a usage error before scanning. Switched to `semgrep scan`, which supports both.
