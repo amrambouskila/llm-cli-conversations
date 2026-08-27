@@ -17,13 +17,18 @@ No production code changed; no `pragma: no cover` added. The link test uses `Pat
 
 Known-unrelated, still open: `jsonl_reader.py:36` tests `"/subagents/" in str(path)`, which never matches on Windows backslash paths — `test_read_claude_jsonl_skips_subagent` fails and line 37 is uncovered on a Windows host. CI is Linux, so the gate is unaffected.
 
-### docker-build: Trivy action reference fixed (2026-08-28)
+### docker-build: Trivy action pinned to v0.36.0 (2026-08-28)
 
-`docker-build` failed before running: `Unable to resolve action aquasecurity/trivy-action@0.28.0, unable to find version 0.28.0`. That repository tags releases with a `v` prefix — `v0.28.0` exists, bare `0.28.0` never did — so the step could never resolve and the Trivy scan has in fact never executed in CI since it was added. Fixed by pinning `aquasecurity/trivy-action@v0.28.0`.
+`docker-build` failed twice, for two distinct upstream-tag reasons:
 
-Kept at `v0.28.0` (trivy binary v0.56.1) rather than bumping to the current `v0.36.0` (trivy v0.70.0): the inputs in use (`image-ref`, `severity`, `exit-code`, `ignore-unfixed`) are identical across both, and v0.56.1 still pulls the current `trivy-db:2` schema and scans correctly — verified directly — so there is no stale-binary hazard, and holding the version keeps the scan behaviour matched to the `.trivyignore` entries that were tuned against it. Since CVE data comes from the DB rather than the binary, detection currency is unaffected.
+1. `Unable to resolve action aquasecurity/trivy-action@0.28.0`. That repository tags releases with a `v` prefix — bare `0.28.0` never existed. Corrected to `v0.28.0`.
+2. `Unable to resolve action aquasecurity/setup-trivy@v0.2.1`. `trivy-action@v0.28.0` delegates its install step to `aquasecurity/setup-trivy`, and the `v0.2.1` tag it pins has since been **deleted upstream** — `setup-trivy` now publishes only `v0.2.6`, `v0.3.0` and `v0.3.1`.
 
-Verified locally against the real image: `docker build -f ./Dockerfile .` succeeds, and the exact scan the job runs (`--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`, repo `.trivyignore` mounted) reports `Total: 0 (HIGH: 0, CRITICAL: 0)` and exits 0. Every other `uses:` reference in both workflow files was audited against the GitHub API; `trivy-action` was the only unresolvable one.
+Because of (2), `trivy-action` v0.28.0–v0.30.0 are permanently unusable: each references its `setup-trivy` dependency by a **mutable tag** that has since been deleted (`v0.2.1` in v0.28.0, `v0.2.2` in v0.29.0/v0.30.0). **v0.31.0 switched that nested reference to a commit SHA**, which cannot be deleted by a tag cleanup — so v0.31.0+ are structurally immune to this failure mode. Pinned to the current `v0.36.0` (trivy binary v0.70.0), where both nested references (`aquasecurity/setup-trivy@3fb12ec`, `actions/cache@27d5ce7`) are SHA-pinned and were verified to exist.
+
+Together these mean the Trivy scan had never actually executed in CI since it was added; the step failed at action resolution every time.
+
+Verified locally against the real image: `docker build -f ./Dockerfile .` succeeds, and the exact scan the job runs (`--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`, repo `.trivyignore` mounted) exits 0 with `Total: 0 (HIGH: 0, CRITICAL: 0)` under **both** trivy v0.56.1 and v0.70.0 — so the version bump introduces no new findings. The four inputs in use (`image-ref`, `severity`, `exit-code`, `ignore-unfixed`) are identical across v0.28.0 and v0.36.0, so no other change was needed. Every other `uses:` reference in both workflow files was audited against the GitHub API and resolves.
 
 ### CI hardening + dependency remediation (2026-08-24)
 
